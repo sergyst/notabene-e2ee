@@ -1,0 +1,6 @@
+target/
+keys/*.json
+.env
+*.iml
+.idea/
+.DS_Store

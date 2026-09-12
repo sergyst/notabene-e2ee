@@ -1,0 +1,53 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: notabene-e2ee
+
+logging:
+  level:
+    id.notabene.e2ee: INFO
+
+notabene:
+  # EU node. For the US node use https://api.us1.notabene.id and
+  # https://us.auth.notabene.id/oauth/token.
+  api-base: https://api.eu1.notabene.id
+  auth-url: https://auth.notabene.id/oauth/token
+  # Defaults to api-base when blank.
+  audience: ""
+
+  # branch = one JWE for ivms101.originator and one for ivms101.beneficiary
+  # field  = one JWE per IVMS101 leaf value (what Notabene's own examples show)
+  pii-mode: branch
+
+  # Where keys/<vasp>.json lives. Same file format as the JavaScript project,
+  # so the two can share keys. Generated on first use.
+  key-dir: keys
+  key-fragment: pii
+
+  # Skip jurisdictional validation of the presentation while experimenting.
+  skip-validation: true
+
+  transfer:
+    asset: eip155:1/slip44:60
+    amount: "1.5"
+    originator-address: "0x1111111111111111111111111111111111111111"
+    beneficiary-address: "0x2222222222222222222222222222222222222222"
+
+  polling:
+    default-interval-seconds: 15
+    limit: 25
+    direction: incoming
+    history-size: 50
+
+  # Add as many as you like; /api/send names two of them.
+  vasps:
+    vaspA:
+      did: ${VASP_A_DID:did:web:vasps.id:vaspa}
+      client-id: ${VASP_A_CLIENT_ID:}
+      client-secret: ${VASP_A_CLIENT_SECRET:}
+    vaspB:
+      did: ${VASP_B_DID:did:web:vasps.id:vaspb}
+      client-id: ${VASP_B_CLIENT_ID:}
+      client-secret: ${VASP_B_CLIENT_SECRET:}

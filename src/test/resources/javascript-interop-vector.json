@@ -1,0 +1,38 @@
+{
+  "_readme": "THROWAWAY TEST KEY. Generated once by the notabene-e2ee-js project purely to pin cross-language interoperability. It belongs to no VASP and no Notabene account, and decrypts nothing but the fixtures in this file. Never reuse it.",
+  "senderDid": "did:web:vasps.id:vaspa",
+  "kid": "did:web:vasps.id:vaspb#pii",
+  "privateJwk": {
+    "kty": "EC",
+    "crv": "P-256",
+    "x": "gQS15jap5QFkMxugzpu_IDMtLBkVj72oUOrMebRum_U",
+    "y": "9Br151djPfc2FPRFrXBbr5twFj9GcKEEuBRrgGmhWTc",
+    "d": "XqqEtjMbDx98K7tR3w7k3nLLONO6H_xVumQI4NpP4Ww"
+  },
+  "publicKeyHex": "038104b5e636a9e50164331ba0ce9bbf20332d2c19158fbda850eacc79b46e9bf5",
+  "pii": {
+    "originator": {
+      "originatorPerson": [
+        {
+          "naturalPerson": {
+            "name": {
+              "nameIdentifier": [
+                {
+                  "primaryIdentifier": "Doe",
+                  "secondaryIdentifier": "John"
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "accountNumber": "vaspA-account-0001"
+    },
+    "beneficiary": {
+      "accountNumber": "vaspB-account-0002"
+    }
+  },
+  "branchJwe": "eyJhbGciOiJFQ0RILUVTIiwiZW5jIjoiQTI1NkdDTSIsInR5cCI6IkpXRSIsImVwayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6ImF2ZS15TVN2emYybm9EeFVBLVhENjBnN3VFT1pWby1vZ0hYQ1RXQU9PeEUiLCJ5IjoiMTlLT2JHMmZpV20zU3lpMlNUY1Z2YXNCczdpdjdkZ3NNN3JvT3ZEYVZ3YyJ9LCJhcHUiOiJLczNZQllkVGxLaXcwZ3dMRVlWRFpkcjJzbXloWWc5Mm1NWnR5b1JDaFRjIiwiYXB2IjoiSGtDUlZaNGtZc1NRVzhRZ1c0X3RGZEg2VlZLS1QwZGpRTTdQeDhsbEJyQSIsImtpZCI6ImRpZDp3ZWI6dmFzcHMuaWQ6dmFzcGIjcGlpIn0..ePGcTVfTMY1QWRqv.AKv6mp40zozoD82N_GFyJl7LoCnCeS7gR5toRpBRTcEkzH316Q6xjlPIEHJvst5gEyoeNcV_tP0hMKO8x-hCkmLpc0olOJJ0Z3c4ZqONDbBzOl7N4PuEOWrz9KPXSoblucUWiXQv9yidJxDg4UxEuAOBa56YOkLO-4iSAYh1lnkeUcMeOn_Rktj0b6vVBVizZ--IQ1myoW4VXgyBHOFbtAbFJQc.xS9dJiBb7rFKcsyEKa3WFg",
+  "beneficiaryJwe": "eyJhbGciOiJFQ0RILUVTIiwiZW5jIjoiQTI1NkdDTSIsInR5cCI6IkpXRSIsImVwayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6IlV0RDkwaEo1WVYwOEY1QWtFdDZSNE93WHlHbVdGZEZVSGtDS2REREhIcVkiLCJ5IjoiNUhXNlRUZ3JTNWZ1YmpyazlRQ3pWb0pEZHBiU1ZnQzBFVlRqWlZYUUNsSSJ9LCJhcHUiOiJLczNZQllkVGxLaXcwZ3dMRVlWRFpkcjJzbXloWWc5Mm1NWnR5b1JDaFRjIiwiYXB2IjoiSGtDUlZaNGtZc1NRVzhRZ1c0X3RGZEg2VlZLS1QwZGpRTTdQeDhsbEJyQSIsImtpZCI6ImRpZDp3ZWI6dmFzcHMuaWQ6dmFzcGIjcGlpIn0..Oz7yJvMSDx9MEO58.rm7aaSqaBpt1BmUG0oSYMDkUQ4Bs9RalKGecEk_gY5Kum1o46zk.eS6v3coz7_pjNnip-5Bdgg",
+  "singleValueJwe": "eyJhbGciOiJFQ0RILUVTIiwiZW5jIjoiQTI1NkdDTSIsInR5cCI6IkpXRSIsImVwayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6ImVpVFU1dTJKOTByNk5RblloSnlDRm1xNGl2ZFE5Uy00WnBGNl94ZWFzQ0kiLCJ5IjoiOXRpZ2ZpeXNVaEJsN1RrSEdVSlQzdnBlYjNlcDNqc0Q3bXluM2puLWdVRSJ9LCJhcHUiOiJLczNZQllkVGxLaXcwZ3dMRVlWRFpkcjJzbXloWWc5Mm1NWnR5b1JDaFRjIiwiYXB2IjoiSGtDUlZaNGtZc1NRVzhRZ1c0X3RGZEg2VlZLS1QwZGpRTTdQeDhsbEJyQSIsImtpZCI6ImRpZDp3ZWI6dmFzcHMuaWQ6dmFzcGIjcGlpIn0..098Wx_BqevwGqIb6.RIK5C1U.DSMGyt5X_1SGT86YKCifgg"
+}

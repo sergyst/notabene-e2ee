@@ -1,0 +1,51 @@
+{
+  "originator": {
+    "originatorPerson": [
+      {
+        "naturalPerson": {
+          "name": {
+            "nameIdentifier": [
+              {
+                "primaryIdentifier": "Doe",
+                "secondaryIdentifier": "John",
+                "naturalPersonNameIdentifierType": "LEGL"
+              }
+            ]
+          },
+          "dateAndPlaceOfBirth": {
+            "dateOfBirth": "1980-01-01",
+            "placeOfBirth": "Anytown, US"
+          },
+          "geographicAddress": [
+            {
+              "addressType": "HOME",
+              "addressLine": ["123 Main Street"],
+              "townName": "Anytown",
+              "country": "US",
+              "postCode": "1234"
+            }
+          ]
+        }
+      }
+    ],
+    "accountNumber": "vaspA-account-0001"
+  },
+  "beneficiary": {
+    "beneficiaryPerson": [
+      {
+        "naturalPerson": {
+          "name": {
+            "nameIdentifier": [
+              {
+                "primaryIdentifier": "Smith",
+                "secondaryIdentifier": "Jane",
+                "naturalPersonNameIdentifierType": "LEGL"
+              }
+            ]
+          }
+        }
+      }
+    ],
+    "accountNumber": "vaspB-account-0002"
+  }
+}
