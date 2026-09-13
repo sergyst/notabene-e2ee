@@ -39,6 +39,9 @@ piiMatches: true | mismatches: 0
 | `POST` | `/api/stopPool` | Stop that poller. |
 | `GET` | `/api/pollStatus` | Which pollers run, and the PII they have decrypted. |
 | `GET` | `/api/vasps` | Configured VASPs, their public PII keys, and DIDDoc entries to publish. |
+| `GET` | `/api/transfers` | Transfers for one VASP or all of them, newest first. |
+| `GET` | `/api/transfers/{id}?vasp=` | One transfer: stored ciphertext next to what that VASP decrypts. |
+| `GET` | `/api/samplePii` | The editable IVMS101 template. |
 
 `pollStatus` and `vasps` are additions — you asked for four endpoints, but polling is only useful if
 you can read what it found, and `vasps` is what makes the setup guide below actionable.
@@ -71,6 +74,33 @@ curl -s -X POST localhost:8080/api/send \
 | `pii` | no | your own IVMS101 object; defaults to `sample-pii.json` |
 
 It fetches vaspB's published key, creates the transfer, encrypts locally, and POSTs the ciphertext.
+
+### transfers
+
+```bash
+curl -s "localhost:8080/api/transfers?channel=local" | jq                  # every VASP
+curl -s "localhost:8080/api/transfers?vasp=vaspB&channel=notabene" | jq    # one of them
+curl -s "localhost:8080/api/transfers/<id>?vasp=vaspB&channel=local" | jq
+```
+
+`?channel=` selects where to read from — see the channel note below. The detail call fetches with
+`decrypt=false` and decrypts locally, returning the ciphertext, the plaintext, the JWE header and a
+flat field list.
+
+### The local channel
+
+`POST /api/send` and `GET /api/transfers` both take `channel`: `notabene` (default) or `local`.
+
+`local` is an in-memory ledger on this server — identical encryption, no network. It exists because
+Notabene will not hand out a counterparty key, or accept a presentation, until your `#pii` key is
+published in the DID document, which for sandbox entities requires their support to publish. Until
+then a live send fails with `404 NO_ENCRYPTION_KEYS`. The local channel lets you exercise the whole
+encrypt → store → decrypt path in the meantime; listing live transfers works either way.
+
+```bash
+curl -s -X POST localhost:8080/api/send -H 'Content-Type: application/json' \
+  -d '{"from":"vaspA","to":"vaspB","channel":"local"}' | jq
+```
 
 ### startPool / stopPool
 
@@ -231,9 +261,19 @@ Key files use the same format, so `keys/vaspB.json` can be moved between the two
 mvn test
 ```
 
+## A React client
+
+[notabene-e2ee-ui](../notabene-e2ee-ui) is a React console for this API: transfers per VASP or all
+together, ciphertext next to decrypted PII, and an editable IVMS101 send form.
+
 ## Configuration
 
 All of `application.yml` is overridable by environment variable.
+
+> **Keep credentials out of the repo.** `application.yml` is tracked and this repo is public, so
+> leave `client-id` / `client-secret` as empty `${VASP_A_CLIENT_ID:}` placeholders there. Real values
+> belong in `config/application.yml` (gitignored, loaded ahead of the packaged file by Spring Boot)
+> or in environment variables.
 
 | Property | Default | Notes |
 |---|---|---|

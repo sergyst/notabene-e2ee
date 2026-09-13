@@ -4,11 +4,16 @@ import id.notabene.e2ee.config.NotabeneProperties;
 import id.notabene.e2ee.crypto.EcdhEsJwe;
 import id.notabene.e2ee.crypto.Jwk;
 import id.notabene.e2ee.crypto.P256;
+import id.notabene.e2ee.ivms.Channel;
 import id.notabene.e2ee.ivms.IvmsCrypto;
 import id.notabene.e2ee.ivms.PiiMode;
 import id.notabene.e2ee.ivms.SamplePii;
 import id.notabene.e2ee.notabene.NotabeneClient;
 import id.notabene.e2ee.notabene.TransferBodies;
+import id.notabene.e2ee.vasp.LocalLedger;
+import id.notabene.e2ee.vasp.VaspKeyStore;
+import java.time.Instant;
+import java.util.UUID;
 import id.notabene.e2ee.web.dto.SendRequest;
 import id.notabene.e2ee.web.dto.SendResponse;
 import java.util.List;
@@ -31,19 +36,29 @@ public class TravelRuleService {
     private final NotabeneClient client;
     private final IvmsCrypto ivmsCrypto;
     private final SamplePii samplePii;
+    private final VaspKeyStore keyStore;
+    private final LocalLedger ledger;
 
     public TravelRuleService(NotabeneProperties properties, NotabeneClient client, IvmsCrypto ivmsCrypto,
-            SamplePii samplePii) {
+            SamplePii samplePii, VaspKeyStore keyStore, LocalLedger ledger) {
         this.properties = properties;
         this.client = client;
         this.ivmsCrypto = ivmsCrypto;
         this.samplePii = samplePii;
+        this.keyStore = keyStore;
+        this.ledger = ledger;
     }
 
     public SendResponse send(SendRequest request) {
         NotabeneProperties.Vasp sender    = properties.requireVasp(request.from());
         NotabeneProperties.Vasp recipient = properties.requireVasp(request.to());
         PiiMode mode = request.mode() == null ? PiiMode.from(properties.getPiiMode()) : PiiMode.from(request.mode());
+        Channel channel = Channel.from(request.channel());
+        Map<String, Object> pii = request.pii() == null || request.pii().isEmpty() ? samplePii.get() : request.pii();
+
+        if (channel == Channel.LOCAL) {
+            return sendLocal(request, sender, recipient, mode, pii);
+        }
 
         // 1 - the counterparty's published PII key.
         Map<String, Object> keyResponse = client.getEntityPublicKeys(sender, recipient.getDid());
@@ -78,7 +93,6 @@ public class TravelRuleService {
         }
 
         // 3 - encrypt with our own code, before any further network call.
-        Map<String, Object> pii = request.pii() == null || request.pii().isEmpty() ? samplePii.get() : request.pii();
         IvmsCrypto.EncryptResult encrypted = ivmsCrypto.encrypt(
                 pii, mode, recipientJwk, recipientKid, sender.getDid());
         Map<String, Object> header = EcdhEsJwe.readHeader(encrypted.parts().get(0).jwe());
@@ -91,7 +105,46 @@ public class TravelRuleService {
 
         List<String> parts = encrypted.parts().stream().map(p -> p.path().replaceFirst("^\\$\\.?", "")).toList();
         return new SendResponse(transferId, request.from(), request.to(), recipientKid, mode.lower(),
-                encrypted.parts().size(), parts, encrypted.payload(), presented, warning);
+                channel.lower(), encrypted.parts().size(), parts, encrypted.payload(), presented, warning);
+    }
+
+    /**
+     * The same encryption, stored on this server instead of Notabene. Useful
+     * before your "#pii" key is published in the DIDDoc, which Notabene needs
+     * before it will hand out a counterparty key or accept a presentation.
+     */
+    private SendResponse sendLocal(SendRequest request, NotabeneProperties.Vasp sender,
+            NotabeneProperties.Vasp recipient, PiiMode mode, Map<String, Object> pii) {
+
+        var recipientKeys = keyStore.keypairFor(request.to());
+        IvmsCrypto.EncryptResult encrypted = ivmsCrypto.encrypt(
+                pii, mode, recipientKeys.publicJwk(), recipientKeys.kid(), sender.getDid());
+
+        String transferId = (request.transferId() == null || request.transferId().isBlank())
+                ? UUID.randomUUID().toString()
+                : request.transferId();
+
+        ledger.add(new LocalLedger.Entry(
+                transferId,
+                request.from(),
+                request.to(),
+                sender.getDid(),
+                recipient.getDid(),
+                properties.getTransfer().getAsset(),
+                properties.getTransfer().getAmount(),
+                mode.lower(),
+                recipientKeys.kid(),
+                Instant.now(),
+                encrypted.payload()));
+
+        log.info("local: {} -> {} stored transfer {} as {} JWE(s) [{}], encrypted to {}",
+                request.from(), request.to(), transferId, encrypted.parts().size(), mode.lower(),
+                recipientKeys.kid());
+
+        List<String> parts = encrypted.parts().stream().map(p -> p.path().replaceFirst("^\\$\\.?", "")).toList();
+        return new SendResponse(transferId, request.from(), request.to(), recipientKeys.kid(), mode.lower(),
+                Channel.LOCAL.lower(), encrypted.parts().size(), parts, encrypted.payload(),
+                Map.of("message", "Stored in the local ledger - Notabene was not contacted"), null);
     }
 
     // ---------------------------------------------------------------- helpers

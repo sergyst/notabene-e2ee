@@ -9,6 +9,7 @@ public record SendResponse(
         String to,
         String recipientKid,
         String mode,
+        String channel,
         int jweCount,
         List<String> encryptedPaths,
         Object encryptedIvms101,

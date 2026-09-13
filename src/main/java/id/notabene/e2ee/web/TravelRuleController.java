@@ -1,9 +1,12 @@
 package id.notabene.e2ee.web;
 
 import id.notabene.e2ee.config.NotabeneProperties;
+import id.notabene.e2ee.ivms.Channel;
 import id.notabene.e2ee.ivms.PiiMode;
+import id.notabene.e2ee.ivms.SamplePii;
 import id.notabene.e2ee.service.DemoService;
 import id.notabene.e2ee.service.PollingService;
+import id.notabene.e2ee.service.TransferService;
 import id.notabene.e2ee.service.TravelRuleService;
 import id.notabene.e2ee.vasp.VaspKeyStore;
 import id.notabene.e2ee.vasp.VaspKeypair;
@@ -12,6 +15,8 @@ import id.notabene.e2ee.web.dto.PollRequest;
 import id.notabene.e2ee.web.dto.PollStatus;
 import id.notabene.e2ee.web.dto.SendRequest;
 import id.notabene.e2ee.web.dto.SendResponse;
+import id.notabene.e2ee.web.dto.TransferDetail;
+import id.notabene.e2ee.web.dto.TransferSummary;
 import id.notabene.e2ee.web.dto.VaspInfo;
 import jakarta.validation.Valid;
 import java.util.ArrayList;
@@ -20,6 +25,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -31,15 +37,20 @@ public class TravelRuleController {
     private final DemoService demoService;
     private final TravelRuleService travelRuleService;
     private final PollingService pollingService;
+    private final TransferService transferService;
     private final VaspKeyStore keyStore;
+    private final SamplePii samplePii;
 
     public TravelRuleController(NotabeneProperties properties, DemoService demoService,
-            TravelRuleService travelRuleService, PollingService pollingService, VaspKeyStore keyStore) {
+            TravelRuleService travelRuleService, PollingService pollingService,
+            TransferService transferService, VaspKeyStore keyStore, SamplePii samplePii) {
         this.properties = properties;
         this.demoService = demoService;
         this.travelRuleService = travelRuleService;
         this.pollingService = pollingService;
+        this.transferService = transferService;
         this.keyStore = keyStore;
+        this.samplePii = samplePii;
     }
 
     /**
@@ -53,10 +64,45 @@ public class TravelRuleController {
         return demoService.run(mode == null ? PiiMode.from(properties.getPiiMode()) : PiiMode.from(mode));
     }
 
+    /** GET /api/samplePii - the editable IVMS101 template the client starts from. */
+    @GetMapping("/samplePii")
+    public java.util.Map<String, Object> samplePii() {
+        return samplePii.get();
+    }
+
     /** POST /api/send - send a Travel Rule message from one VASP to another. */
     @PostMapping("/send")
     public SendResponse send(@Valid @RequestBody SendRequest request) {
         return travelRuleService.send(request);
+    }
+
+    /**
+     * GET /api/transfers - transfers for one VASP, or for every configured VASP
+     * when no vasp parameter is given, newest first.
+     *
+     * ?vasp=vaspA&vasp=vaspB   omit for all
+     * ?channel=notabene|local
+     * ?direction=incoming|outgoing  (Notabene channel only)
+     */
+    @GetMapping("/transfers")
+    public List<TransferSummary> transfers(
+            @RequestParam(required = false) List<String> vasp,
+            @RequestParam(required = false) String channel,
+            @RequestParam(required = false) String direction,
+            @RequestParam(required = false, defaultValue = "25") int limit) {
+        return transferService.list(vasp, Channel.from(channel), direction, limit);
+    }
+
+    /**
+     * GET /api/transfers/{id}?vasp=vaspB - one transfer, showing the stored
+     * ciphertext next to what this VASP can decrypt from it.
+     */
+    @GetMapping("/transfers/{transferId}")
+    public TransferDetail transfer(
+            @PathVariable String transferId,
+            @RequestParam String vasp,
+            @RequestParam(required = false) String channel) {
+        return transferService.detail(vasp, transferId, Channel.from(channel));
     }
 
     /** POST /api/startPool - start polling Notabene for messages to this VASP. */

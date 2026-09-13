@@ -16,6 +16,9 @@ notabene:
   auth-url: https://auth.notabene.id/oauth/token
   # Defaults to api-base when blank.
   audience: ""
+  #  API=https://api.eu1.notabene.id
+  #  AUTH=https://auth.notabene.id/oauth/token
+  #  AUDIENCE=https://api.eu1.notabene.id
 
   # branch = one JWE for ivms101.originator and one for ivms101.beneficiary
   # field  = one JWE per IVMS101 leaf value (what Notabene's own examples show)
@@ -44,10 +47,16 @@ notabene:
   # Add as many as you like; /api/send names two of them.
   vasps:
     vaspA:
-      did: ${VASP_A_DID:did:web:vasps.id:vaspa}
+#      did: ${VASP_A_DID:did:web:vasps.id:vaspa}
+      did: ${VASP_A_DID:did:web:citi.com:test:us}
+#      client-id: ${VASP_A_CLIENT_ID:}
       client-id: ${VASP_A_CLIENT_ID:}
+#      client-secret: ${VASP_A_CLIENT_SECRET:}
       client-secret: ${VASP_A_CLIENT_SECRET:}
     vaspB:
-      did: ${VASP_B_DID:did:web:vasps.id:vaspb}
+#      did: ${VASP_B_DID:did:web:vasps.id:vaspb}
+      did: ${VASP_B_DID:did:web:citi.com:test:il}
+#      client-id: ${VASP_B_CLIENT_ID:}
       client-id: ${VASP_B_CLIENT_ID:}
+#      client-secret: ${VASP_B_CLIENT_SECRET:}
       client-secret: ${VASP_B_CLIENT_SECRET:}
