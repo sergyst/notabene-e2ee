@@ -8,6 +8,8 @@ public record SendResponse(
         String from,
         String to,
         String recipientKid,
+        /** notabene | local | explicit - where the encryption key came from. */
+        String recipientKeySource,
         String mode,
         String channel,
         int jweCount,

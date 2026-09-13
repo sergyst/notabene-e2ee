@@ -14,6 +14,7 @@ import id.notabene.e2ee.vasp.LocalLedger;
 import id.notabene.e2ee.vasp.VaspKeyStore;
 import java.time.Instant;
 import java.util.UUID;
+import id.notabene.e2ee.web.dto.RecipientKey;
 import id.notabene.e2ee.web.dto.SendRequest;
 import id.notabene.e2ee.web.dto.SendResponse;
 import java.util.List;
@@ -60,21 +61,12 @@ public class TravelRuleService {
             return sendLocal(request, sender, recipient, mode, pii);
         }
 
-        // 1 - the counterparty's published PII key.
-        Map<String, Object> keyResponse = client.getEntityPublicKeys(sender, recipient.getDid());
-        Map<String, Object> encryptionKey = asMap(keyResponse.get("encryptionKey"), keyResponse);
-        Jwk recipientJwk = toJwk(encryptionKey);
-        String recipientKid = encryptionKey.get("id") instanceof String id ? id
-                : recipient.getDid() + "#" + properties.getKeyFragment();
-
-        String warning = null;
-        if (!recipientKid.endsWith("#" + properties.getKeyFragment())) {
-            warning = "Recipient key id \"" + recipientKid + "\" does not end in \"#" + properties.getKeyFragment()
-                    + "\" - " + request.to() + " is probably still on Notabene-managed encryption. Publish the "
-                    + "\"#pii\" key from GET /api/vasps in its DIDDoc for true end-to-end encryption.";
-            log.warn(warning);
-        }
-        log.info("recipient key {} ({})", recipientKid, encryptionKey.get("type"));
+        // 1 - the key to encrypt to.
+        ResolvedKey key = resolveRecipientKey(request, sender, recipient);
+        Jwk recipientJwk = key.jwk();
+        String recipientKid = key.kid();
+        String warning = key.warning();
+        log.info("recipient key {} (source: {})", recipientKid, key.source());
 
         // 2 - the transfer.
         String transferId = request.transferId();
@@ -104,8 +96,78 @@ public class TravelRuleService {
         log.info("Notabene accepted the presentation for {}: {}", transferId, presented);
 
         List<String> parts = encrypted.parts().stream().map(p -> p.path().replaceFirst("^\\$\\.?", "")).toList();
-        return new SendResponse(transferId, request.from(), request.to(), recipientKid, mode.lower(),
-                channel.lower(), encrypted.parts().size(), parts, encrypted.payload(), presented, warning);
+        return new SendResponse(transferId, request.from(), request.to(), recipientKid, key.source(),
+                mode.lower(), channel.lower(), encrypted.parts().size(), parts, encrypted.payload(),
+                presented, warning);
+    }
+
+    private record ResolvedKey(Jwk jwk, String kid, String source, String warning) {
+    }
+
+    /**
+     * Where the recipient's public key comes from. Notabene's directory by
+     * default; this server's own keystore or a key supplied in the request when
+     * that lookup cannot answer - a did:web that does not resolve makes
+     * /public-keys return NO_ENCRYPTION_KEYS even though the hosted DID document
+     * has a perfectly good key in it.
+     */
+    private ResolvedKey resolveRecipientKey(SendRequest request, NotabeneProperties.Vasp sender,
+            NotabeneProperties.Vasp recipient) {
+
+        RecipientKey requested = request.recipientKey();
+        String source = requested == null || requested.source() == null || requested.source().isBlank()
+                ? (requested != null && requested.hasExplicitMaterial() ? "explicit" : "notabene")
+                : requested.source().trim().toLowerCase();
+        String defaultKid = recipient.getDid() + "#" + properties.getKeyFragment();
+
+        switch (source) {
+            case "local" -> {
+                var keys = keyStore.keypairFor(request.to());
+                String kid = requested != null && requested.kid() != null && !requested.kid().isBlank()
+                        ? requested.kid()
+                        : keys.kid();
+                return new ResolvedKey(keys.publicJwk(), kid, "local",
+                        request.to() + " must hold the matching private key (" + keyStore.keyFile(request.to())
+                                + ") to read this, and its public half must be published for anyone else to.");
+            }
+            case "explicit" -> {
+                if (requested == null || !requested.hasExplicitMaterial()) {
+                    throw new IllegalArgumentException(
+                            "recipientKey.source is \"explicit\" but no publicKeyHex or publicKeyJwk was given");
+                }
+                Jwk jwk = requested.publicKeyJwk() != null && !requested.publicKeyJwk().isEmpty()
+                        ? Jwk.fromMap(requested.publicKeyJwk())
+                        : P256.hexToJwk(requested.publicKeyHex());
+                String kid = requested.kid() != null && !requested.kid().isBlank() ? requested.kid() : defaultKid;
+                String warning = (requested.kid() == null || requested.kid().isBlank())
+                        ? "No kid given, so apv was bound to \"" + kid + "\". The recipient must expect that exact "
+                                + "key id or its apv check will reject the message."
+                        : null;
+                return new ResolvedKey(jwk, kid, "explicit", warning);
+            }
+            case "notabene" -> {
+                Map<String, Object> keyResponse = client.getEntityPublicKeys(sender, recipient.getDid());
+                Map<String, Object> encryptionKey = asMap(keyResponse.get("encryptionKey"), keyResponse);
+                Jwk jwk = toJwk(encryptionKey);
+                String kid = encryptionKey.get("id") instanceof String id ? id : defaultKid;
+
+                String warning = null;
+                if (kid.endsWith("#notabene-pii")) {
+                    warning = "Encrypting to \"" + kid + "\", which is Notabene's own key - they hold the private "
+                            + "half and can read this PII. That is their hybrid model, not end-to-end. Publish your "
+                            + "own \"#" + properties.getKeyFragment() + "\" key, or send recipientKey explicitly.";
+                } else if (!kid.endsWith("#" + properties.getKeyFragment())) {
+                    warning = "Recipient key id \"" + kid + "\" does not end in \"#" + properties.getKeyFragment()
+                            + "\" - " + request.to() + " may still be on Notabene-managed encryption.";
+                }
+                if (warning != null) {
+                    log.warn(warning);
+                }
+                return new ResolvedKey(jwk, kid, "notabene", warning);
+            }
+            default -> throw new IllegalArgumentException(
+                    "Unknown recipientKey.source: \"" + source + "\". Use notabene, local or explicit.");
+        }
     }
 
     /**
@@ -142,8 +204,8 @@ public class TravelRuleService {
                 recipientKeys.kid());
 
         List<String> parts = encrypted.parts().stream().map(p -> p.path().replaceFirst("^\\$\\.?", "")).toList();
-        return new SendResponse(transferId, request.from(), request.to(), recipientKeys.kid(), mode.lower(),
-                Channel.LOCAL.lower(), encrypted.parts().size(), parts, encrypted.payload(),
+        return new SendResponse(transferId, request.from(), request.to(), recipientKeys.kid(), "local",
+                mode.lower(), Channel.LOCAL.lower(), encrypted.parts().size(), parts, encrypted.payload(),
                 Map.of("message", "Stored in the local ledger - Notabene was not contacted"), null);
     }
 
@@ -180,10 +242,14 @@ public class TravelRuleService {
         return value instanceof Map<?, ?> map ? (Map<String, Object>) map : fallback;
     }
 
+    /** Notabene returns the id as "@id" inside "transfer"; other shapes appear in their docs. */
     private static String extractTransferId(Map<String, Object> created) {
-        Object transfer = created.get("transfer");
-        if (transfer instanceof Map<?, ?> map && map.get("id") != null) {
-            return map.get("id").toString();
+        if (created.get("transfer") instanceof Map<?, ?> transfer) {
+            for (String key : List.of("id", "@id", "transferId")) {
+                if (transfer.get(key) != null) {
+                    return transfer.get(key).toString();
+                }
+            }
         }
         for (String key : List.of("id", "@id", "transferId")) {
             if (created.get(key) != null) {

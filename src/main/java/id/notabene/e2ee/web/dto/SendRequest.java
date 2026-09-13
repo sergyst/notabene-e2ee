@@ -11,6 +11,7 @@ import java.util.Map;
  * @param transferId   present PII on an existing transfer instead of creating one
  * @param policyId     fulfil one specific policy instead of every open one
  * @param pii          IVMS101 payload; defaults to sample-pii.json
+ * @param recipientKey which public key to encrypt to; omit to ask Notabene
  */
 public record SendRequest(
         @NotBlank String from,
@@ -21,5 +22,6 @@ public record SendRequest(
         String policyId,
         String originatorId,
         String beneficiaryId,
-        Map<String, Object> pii) {
+        Map<String, Object> pii,
+        RecipientKey recipientKey) {
 }
