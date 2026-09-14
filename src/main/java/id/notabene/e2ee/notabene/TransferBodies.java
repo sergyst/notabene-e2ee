@@ -13,14 +13,17 @@ public final class TransferBodies {
     }
 
     public static Map<String, Object> hostedToHosted(NotabeneProperties.Transfer transfer, String originatorVaspDid,
-            String beneficiaryVaspDid, String originatorId, String beneficiaryId) {
+            String beneficiaryVaspDid, String originatorId, String beneficiaryId, String settlementAddress) {
+
+        String settlement = Addresses.toDidPkh((settlementAddress == null || settlementAddress.isBlank())
+                ? transfer.getBeneficiaryAddress()
+                : settlementAddress);
 
         List<Map<String, Object>> agents = new ArrayList<>();
-        agents.add(agent("did:pkh:eip155:1:" + transfer.getOriginatorAddress(), originatorVaspDid, "SourceAddress"));
+        agents.add(agent(Addresses.toDidPkh(transfer.getOriginatorAddress()), originatorVaspDid, "SourceAddress"));
         agents.add(agent(originatorVaspDid, originatorId, "VASP"));
         agents.add(agent(beneficiaryVaspDid, beneficiaryId, "VASP"));
-        agents.add(agent("did:pkh:eip155:1:" + transfer.getBeneficiaryAddress(), beneficiaryVaspDid,
-                "SettlementAddress"));
+        agents.add(agent(settlement, beneficiaryVaspDid, "SettlementAddress"));
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("originator", Map.of("@id", originatorId));

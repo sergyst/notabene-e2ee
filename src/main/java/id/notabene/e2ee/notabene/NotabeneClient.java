@@ -114,6 +114,51 @@ public class NotabeneClient {
     }
 
     /**
+     * Which VASP owns a blockchain address, per relationships, the Hashed
+     * Address Service and blockchain analytics.
+     * https://devx.notabene.id/reference/discoveraddressownership
+     */
+    public Map<String, Object> discoverAddressOwnership(NotabeneProperties.Vasp caller, String asset, String address) {
+        String did = encode(caller.getDid());
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("asset", asset);
+        body.put("address", address);
+        try {
+            return requestFirstThatWorks(caller, "POST", List.of(
+                    "/entities/" + did + "/address-ownership/discover",
+                    "/entity/" + did + "/address-ownership/discover"), body);
+        } catch (NotabeneApiException e) {
+            // Notabene answers 404 with a complete body when nothing owns the
+            // address. "NOT_FOUND" is the answer to the question, not an error.
+            if (e.getStatus() == 404 && e.getBody() != null && e.getBody().contains("\"addressOwnership\"")) {
+                return parse(e.getBody());
+            }
+            throw e;
+        }
+    }
+
+    /**
+     * Claim an address for an entity. PATCH upserts, so it both creates the
+     * relationship and confirms it.
+     * https://devx.notabene.id/reference/confirmrelationship
+     */
+    public Map<String, Object> confirmRelationship(NotabeneProperties.Vasp caller, String from, String to) {
+        String did = encode(caller.getDid());
+        String query = "?from=" + encode(from) + "&to=" + encode(to);
+        return requestFirstThatWorks(caller, "PATCH", List.of(
+                "/entities/" + did + "/relationships" + query,
+                "/entity/" + did + "/relationships" + query), Map.of());
+    }
+
+    /** Everything this entity knows about who owns which address. */
+    public Map<String, Object> listRelationships(NotabeneProperties.Vasp caller) {
+        String did = encode(caller.getDid());
+        return getMap(caller, List.of(
+                "/entities/" + did + "/relationships",
+                "/entity/" + did + "/relationships"));
+    }
+
+    /**
      * Post the already-encrypted IVMS101 to the counterparty. With a policyId it
      * fulfils that specific policy; without one it fulfils any open Travel Rule
      * policy on the transfer.
@@ -199,6 +244,11 @@ public class NotabeneClient {
             wrapped.put("raw", text);
             return wrapped;
         }
+        return json.readValue(text, Map.class);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> parse(String text) {
         return json.readValue(text, Map.class);
     }
 

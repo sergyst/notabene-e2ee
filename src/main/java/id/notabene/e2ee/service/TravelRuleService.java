@@ -14,6 +14,7 @@ import id.notabene.e2ee.vasp.LocalLedger;
 import id.notabene.e2ee.vasp.VaspKeyStore;
 import java.time.Instant;
 import java.util.UUID;
+import id.notabene.e2ee.web.dto.AddressOwnership;
 import id.notabene.e2ee.web.dto.RecipientKey;
 import id.notabene.e2ee.web.dto.SendRequest;
 import id.notabene.e2ee.web.dto.SendResponse;
@@ -39,30 +40,40 @@ public class TravelRuleService {
     private final SamplePii samplePii;
     private final VaspKeyStore keyStore;
     private final LocalLedger ledger;
+    private final AddressOwnershipService addressOwnership;
 
     public TravelRuleService(NotabeneProperties properties, NotabeneClient client, IvmsCrypto ivmsCrypto,
-            SamplePii samplePii, VaspKeyStore keyStore, LocalLedger ledger) {
+            SamplePii samplePii, VaspKeyStore keyStore, LocalLedger ledger,
+            AddressOwnershipService addressOwnership) {
         this.properties = properties;
         this.client = client;
         this.ivmsCrypto = ivmsCrypto;
         this.samplePii = samplePii;
         this.keyStore = keyStore;
         this.ledger = ledger;
+        this.addressOwnership = addressOwnership;
+    }
+
+    /** Who the PII is for: a configured VASP, or one discovered from an address. */
+    private record Beneficiary(String vaspName, String did, String discoveredFrom) {
+        String label() {
+            return vaspName != null ? vaspName : did;
+        }
     }
 
     public SendResponse send(SendRequest request) {
-        NotabeneProperties.Vasp sender    = properties.requireVasp(request.from());
-        NotabeneProperties.Vasp recipient = properties.requireVasp(request.to());
+        NotabeneProperties.Vasp sender = properties.requireVasp(request.from());
+        Beneficiary beneficiary = resolveBeneficiary(request);
         PiiMode mode = request.mode() == null ? PiiMode.from(properties.getPiiMode()) : PiiMode.from(request.mode());
         Channel channel = Channel.from(request.channel());
         Map<String, Object> pii = request.pii() == null || request.pii().isEmpty() ? samplePii.get() : request.pii();
 
         if (channel == Channel.LOCAL) {
-            return sendLocal(request, sender, recipient, mode, pii);
+            return sendLocal(request, sender, beneficiary, mode, pii);
         }
 
         // 1 - the key to encrypt to.
-        ResolvedKey key = resolveRecipientKey(request, sender, recipient);
+        ResolvedKey key = resolveRecipientKey(request, sender, beneficiary);
         Jwk recipientJwk = key.jwk();
         String recipientKid = key.kid();
         String warning = key.warning();
@@ -74,9 +85,10 @@ public class TravelRuleService {
             Map<String, Object> body = TransferBodies.hostedToHosted(
                     properties.getTransfer(),
                     sender.getDid(),
-                    recipient.getDid(),
+                    beneficiary.did(),
                     orDefault(request.originatorId(), sender.getDid() + ":customer:john-doe"),
-                    orDefault(request.beneficiaryId(), recipient.getDid() + ":customer:jane-smith"));
+                    orDefault(request.beneficiaryId(), beneficiary.did() + ":customer:jane-smith"),
+                    request.beneficiaryAddress());
             Map<String, Object> created = client.createTransfer(sender, body);
             transferId = extractTransferId(created);
             log.info("created transfer {}", transferId);
@@ -96,9 +108,37 @@ public class TravelRuleService {
         log.info("Notabene accepted the presentation for {}: {}", transferId, presented);
 
         List<String> parts = encrypted.parts().stream().map(p -> p.path().replaceFirst("^\\$\\.?", "")).toList();
-        return new SendResponse(transferId, request.from(), request.to(), recipientKid, key.source(),
-                mode.lower(), channel.lower(), encrypted.parts().size(), parts, encrypted.payload(),
-                presented, warning);
+        return new SendResponse(transferId, request.from(), beneficiary.label(), beneficiary.did(),
+                beneficiary.discoveredFrom(), recipientKid, key.source(), mode.lower(), channel.lower(),
+                encrypted.parts().size(), parts, encrypted.payload(), presented, warning);
+    }
+
+    /**
+     * Name the beneficiary VASP, or find it. With no "to", the settlement
+     * address is put through address-ownership discovery and whoever owns it
+     * becomes the beneficiary - which is how a real originator works out where
+     * a withdrawal is going.
+     */
+    private Beneficiary resolveBeneficiary(SendRequest request) {
+        if (request.to() != null && !request.to().isBlank()) {
+            return new Beneficiary(request.to(), properties.requireVasp(request.to()).getDid(), null);
+        }
+        if (request.beneficiaryAddress() == null || request.beneficiaryAddress().isBlank()) {
+            throw new IllegalArgumentException(
+                    "Give either \"to\" (a configured VASP name) or \"beneficiaryAddress\" to discover one.");
+        }
+
+        AddressOwnership owner = addressOwnership.check(
+                request.from(), request.beneficiaryAddress(), request.asset());
+        if (!owner.owned()) {
+            throw new IllegalArgumentException("No VASP owns " + owner.address() + " (" + owner.confidence()
+                    + "). The owner must claim it first - POST /api/addressOwnership - or name \"to\" directly.");
+        }
+
+        String name = properties.findNameByDid(owner.agentDid());
+        log.info("discovered beneficiary {} ({}) from address {}",
+                owner.agentDid(), owner.agentName(), owner.address());
+        return new Beneficiary(name, owner.agentDid(), owner.address());
     }
 
     private record ResolvedKey(Jwk jwk, String kid, String source, String warning) {
@@ -112,22 +152,27 @@ public class TravelRuleService {
      * has a perfectly good key in it.
      */
     private ResolvedKey resolveRecipientKey(SendRequest request, NotabeneProperties.Vasp sender,
-            NotabeneProperties.Vasp recipient) {
+            Beneficiary beneficiary) {
 
         RecipientKey requested = request.recipientKey();
         String source = requested == null || requested.source() == null || requested.source().isBlank()
                 ? (requested != null && requested.hasExplicitMaterial() ? "explicit" : "notabene")
                 : requested.source().trim().toLowerCase();
-        String defaultKid = recipient.getDid() + "#" + properties.getKeyFragment();
+        String defaultKid = beneficiary.did() + "#" + properties.getKeyFragment();
 
         switch (source) {
             case "local" -> {
-                var keys = keyStore.keypairFor(request.to());
+                if (beneficiary.vaspName() == null) {
+                    throw new IllegalArgumentException("recipientKey.source is \"local\" but " + beneficiary.did()
+                            + " is not a VASP configured on this server, so we hold no key for it.");
+                }
+                var keys = keyStore.keypairFor(beneficiary.vaspName());
                 String kid = requested != null && requested.kid() != null && !requested.kid().isBlank()
                         ? requested.kid()
                         : keys.kid();
                 return new ResolvedKey(keys.publicJwk(), kid, "local",
-                        request.to() + " must hold the matching private key (" + keyStore.keyFile(request.to())
+                        beneficiary.label() + " must hold the matching private key ("
+                                + keyStore.keyFile(beneficiary.vaspName())
                                 + ") to read this, and its public half must be published for anyone else to.");
             }
             case "explicit" -> {
@@ -146,7 +191,7 @@ public class TravelRuleService {
                 return new ResolvedKey(jwk, kid, "explicit", warning);
             }
             case "notabene" -> {
-                Map<String, Object> keyResponse = client.getEntityPublicKeys(sender, recipient.getDid());
+                Map<String, Object> keyResponse = client.getEntityPublicKeys(sender, beneficiary.did());
                 Map<String, Object> encryptionKey = asMap(keyResponse.get("encryptionKey"), keyResponse);
                 Jwk jwk = toJwk(encryptionKey);
                 String kid = encryptionKey.get("id") instanceof String id ? id : defaultKid;
@@ -158,7 +203,7 @@ public class TravelRuleService {
                             + "own \"#" + properties.getKeyFragment() + "\" key, or send recipientKey explicitly.";
                 } else if (!kid.endsWith("#" + properties.getKeyFragment())) {
                     warning = "Recipient key id \"" + kid + "\" does not end in \"#" + properties.getKeyFragment()
-                            + "\" - " + request.to() + " may still be on Notabene-managed encryption.";
+                            + "\" - " + beneficiary.label() + " may still be on Notabene-managed encryption.";
                 }
                 if (warning != null) {
                     log.warn(warning);
@@ -176,9 +221,13 @@ public class TravelRuleService {
      * before it will hand out a counterparty key or accept a presentation.
      */
     private SendResponse sendLocal(SendRequest request, NotabeneProperties.Vasp sender,
-            NotabeneProperties.Vasp recipient, PiiMode mode, Map<String, Object> pii) {
+            Beneficiary beneficiary, PiiMode mode, Map<String, Object> pii) {
 
-        var recipientKeys = keyStore.keypairFor(request.to());
+        if (beneficiary.vaspName() == null) {
+            throw new IllegalArgumentException("The local channel needs a VASP configured on this server; "
+                    + beneficiary.did() + " is not one.");
+        }
+        var recipientKeys = keyStore.keypairFor(beneficiary.vaspName());
         IvmsCrypto.EncryptResult encrypted = ivmsCrypto.encrypt(
                 pii, mode, recipientKeys.publicJwk(), recipientKeys.kid(), sender.getDid());
 
@@ -189,9 +238,9 @@ public class TravelRuleService {
         ledger.add(new LocalLedger.Entry(
                 transferId,
                 request.from(),
-                request.to(),
+                beneficiary.vaspName(),
                 sender.getDid(),
-                recipient.getDid(),
+                beneficiary.did(),
                 properties.getTransfer().getAsset(),
                 properties.getTransfer().getAmount(),
                 mode.lower(),
@@ -200,12 +249,13 @@ public class TravelRuleService {
                 encrypted.payload()));
 
         log.info("local: {} -> {} stored transfer {} as {} JWE(s) [{}], encrypted to {}",
-                request.from(), request.to(), transferId, encrypted.parts().size(), mode.lower(),
+                request.from(), beneficiary.vaspName(), transferId, encrypted.parts().size(), mode.lower(),
                 recipientKeys.kid());
 
         List<String> parts = encrypted.parts().stream().map(p -> p.path().replaceFirst("^\\$\\.?", "")).toList();
-        return new SendResponse(transferId, request.from(), request.to(), recipientKeys.kid(), "local",
-                mode.lower(), Channel.LOCAL.lower(), encrypted.parts().size(), parts, encrypted.payload(),
+        return new SendResponse(transferId, request.from(), beneficiary.vaspName(), beneficiary.did(),
+                beneficiary.discoveredFrom(), recipientKeys.kid(), "local", mode.lower(), Channel.LOCAL.lower(),
+                encrypted.parts().size(), parts, encrypted.payload(),
                 Map.of("message", "Stored in the local ledger - Notabene was not contacted"), null);
     }
 

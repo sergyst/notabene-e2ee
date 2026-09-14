@@ -4,12 +4,16 @@ import id.notabene.e2ee.config.NotabeneProperties;
 import id.notabene.e2ee.ivms.Channel;
 import id.notabene.e2ee.ivms.PiiMode;
 import id.notabene.e2ee.ivms.SamplePii;
+import id.notabene.e2ee.service.AddressOwnershipService;
 import id.notabene.e2ee.service.DemoService;
 import id.notabene.e2ee.service.PollingService;
 import id.notabene.e2ee.service.TransferService;
 import id.notabene.e2ee.service.TravelRuleService;
 import id.notabene.e2ee.vasp.VaspKeyStore;
 import id.notabene.e2ee.vasp.VaspKeypair;
+import id.notabene.e2ee.web.dto.AddOwnershipRequest;
+import id.notabene.e2ee.web.dto.AddOwnershipResponse;
+import id.notabene.e2ee.web.dto.AddressOwnership;
 import id.notabene.e2ee.web.dto.DemoReport;
 import id.notabene.e2ee.web.dto.PollRequest;
 import id.notabene.e2ee.web.dto.PollStatus;
@@ -40,10 +44,12 @@ public class TravelRuleController {
     private final TransferService transferService;
     private final VaspKeyStore keyStore;
     private final SamplePii samplePii;
+    private final AddressOwnershipService addressOwnershipService;
 
     public TravelRuleController(NotabeneProperties properties, DemoService demoService,
             TravelRuleService travelRuleService, PollingService pollingService,
-            TransferService transferService, VaspKeyStore keyStore, SamplePii samplePii) {
+            TransferService transferService, VaspKeyStore keyStore, SamplePii samplePii,
+            AddressOwnershipService addressOwnershipService) {
         this.properties = properties;
         this.demoService = demoService;
         this.travelRuleService = travelRuleService;
@@ -51,6 +57,7 @@ public class TravelRuleController {
         this.transferService = transferService;
         this.keyStore = keyStore;
         this.samplePii = samplePii;
+        this.addressOwnershipService = addressOwnershipService;
     }
 
     /**
@@ -103,6 +110,29 @@ public class TravelRuleController {
             @RequestParam String vasp,
             @RequestParam(required = false) String channel) {
         return transferService.detail(vasp, transferId, Channel.from(channel));
+    }
+
+    /**
+     * GET /api/addressOwnership - does this address have a known owner?
+     *
+     * ?vasp=vaspA&address=0x2222…&asset=eip155:1/slip44:60
+     * The address may be bare, CAIP ("eip155:1:0x…") or a did:pkh.
+     */
+    @GetMapping("/addressOwnership")
+    public AddressOwnership addressOwnership(
+            @RequestParam String vasp,
+            @RequestParam String address,
+            @RequestParam(required = false) String asset) {
+        return addressOwnershipService.check(vasp, address, asset);
+    }
+
+    /**
+     * POST /api/addressOwnership - claim an address, so counterparties can
+     * discover who owns it. Upserts and confirms, then re-checks.
+     */
+    @PostMapping("/addressOwnership")
+    public AddOwnershipResponse addAddressOwnership(@Valid @RequestBody AddOwnershipRequest request) {
+        return addressOwnershipService.claim(request);
     }
 
     /** POST /api/startPool - start polling Notabene for messages to this VASP. */

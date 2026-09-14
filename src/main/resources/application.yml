@@ -7,7 +7,7 @@ spring:
 
 logging:
   level:
-    id.notabene.e2ee: INFO
+    id.notabene.e2ee: DEBUG
 
 notabene:
   # EU node. For the US node use https://api.us1.notabene.id and

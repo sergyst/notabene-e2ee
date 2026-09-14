@@ -223,6 +223,18 @@ public class NotabeneProperties {
         this.vasps = vasps;
     }
 
+    /** The configured name for a DID, or null when it is not one of ours. */
+    public String findNameByDid(String did) {
+        if (did == null) {
+            return null;
+        }
+        return vasps.entrySet().stream()
+                .filter(e -> did.equals(e.getValue().getDid()))
+                .map(Map.Entry::getKey)
+                .findFirst()
+                .orElse(null);
+    }
+
     /** Look a VASP up by its configured name, failing with the list of valid names. */
     public Vasp requireVasp(String name) {
         Vasp vasp = vasps.get(name);

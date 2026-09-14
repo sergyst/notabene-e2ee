@@ -5,7 +5,10 @@ import java.util.Map;
 
 /**
  * @param from         configured VASP name that originates (e.g. "vaspA")
- * @param to           configured VASP name that receives (e.g. "vaspB")
+ * @param to           configured VASP name that receives; omit and give beneficiaryAddress
+ *                     instead to discover the beneficiary VASP from the address
+ * @param beneficiaryAddress settlement address whose owner becomes the beneficiary VASP
+ * @param asset        for address-ownership discovery; defaults to notabene.transfer.asset
  * @param mode         branch or field; defaults to notabene.pii-mode
  * @param channel      notabene (default) or local, an in-memory stand-in
  * @param transferId   present PII on an existing transfer instead of creating one
@@ -15,7 +18,9 @@ import java.util.Map;
  */
 public record SendRequest(
         @NotBlank String from,
-        @NotBlank String to,
+        String to,
+        String beneficiaryAddress,
+        String asset,
         String mode,
         String channel,
         String transferId,
