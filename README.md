@@ -42,6 +42,9 @@ piiMatches: true | mismatches: 0
 | `GET` | `/api/transfers` | Transfers for one VASP or all of them, newest first. |
 | `GET` | `/api/transfers/{id}?vasp=` | One transfer: stored ciphertext next to what that VASP decrypts. |
 | `GET` | `/api/samplePii` | The editable IVMS101 template. |
+| `POST` | `/api/register` | Register an address to one of your VASPs. |
+| `GET` | `/api/registration-status` | Is an address registered, and to whom? |
+| `GET`/`POST` | `/api/addressOwnership` | The same two operations, CAIP-10 in the address rather than a `network` field. |
 
 `pollStatus` and `vasps` are additions — you asked for four endpoints, but polling is only useful if
 you can read what it found, and `vasps` is what makes the setup guide below actionable.
@@ -86,6 +89,32 @@ curl -s "localhost:8080/api/transfers/<id>?vasp=vaspB&channel=local" | jq
 `?channel=` selects where to read from — see the channel note below. The detail call fetches with
 `decrypt=false` and decrypts locally, returning the ciphertext, the plaintext, the JWE header and a
 flat field list.
+
+### register / registration-status
+
+```bash
+curl -s "localhost:8080/api/registration-status?vasp=vaspB&address=0x56F5…&network=ethereum" | jq
+
+curl -s -X POST localhost:8080/api/register -H 'Content-Type: application/json' \
+  -d '{"vasp":"vaspB","address":"0x56F5…","network":"ethereum"}' | jq
+```
+
+`network` takes a friendly name — `ethereum`, `sepolia`, `holesky`, `polygon`, `bitcoin` — or any
+CAIP-2 id such as `eip155:42161`. The address may be bare or already CAIP-10; if it names a chain
+that contradicts `network`, the call is rejected rather than silently reinterpreted. That matters:
+the same hex on two chains is two different registrations.
+
+`registration-status` answers `{"registered": false, …}` when nobody owns it, and otherwise names
+the owning VASP, its jurisdiction, and — when the owner is one of yours — its configured name.
+
+> **Testnets do not work.** Notabene rejects `eip155:11155111` with *"Asset … is not supported or
+> chain is not resolvable"*, and rejects a testnet address under a mainnet asset with
+> `CHAIN_MISMATCH`. Their model needs a fiat price per asset to enforce jurisdictional thresholds,
+> which testnet assets have not got. For Travel Rule testing the chain is notional anyway — nothing
+> settles on-chain — so use mainnet-shaped addresses and never settle them.
+
+`GET`/`POST /api/addressOwnership` do the same two things with the chain carried inside the address.
+Both pairs share one service; use whichever suits the caller.
 
 ### The local channel
 

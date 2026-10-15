@@ -15,6 +15,9 @@ import id.notabene.e2ee.web.dto.AddOwnershipRequest;
 import id.notabene.e2ee.web.dto.AddOwnershipResponse;
 import id.notabene.e2ee.web.dto.AddressOwnership;
 import id.notabene.e2ee.web.dto.DemoReport;
+import id.notabene.e2ee.web.dto.RegisterRequest;
+import id.notabene.e2ee.web.dto.RegisterResponse;
+import id.notabene.e2ee.web.dto.RegistrationStatus;
 import id.notabene.e2ee.web.dto.PollRequest;
 import id.notabene.e2ee.web.dto.PollStatus;
 import id.notabene.e2ee.web.dto.SendRequest;
@@ -133,6 +136,35 @@ public class TravelRuleController {
     @PostMapping("/addressOwnership")
     public AddOwnershipResponse addAddressOwnership(@Valid @RequestBody AddOwnershipRequest request) {
         return addressOwnershipService.claim(request);
+    }
+
+    /**
+     * POST /api/register - register a blockchain address to one of your VASPs,
+     * so counterparties discover that VASP as its owner.
+     *
+     * {"vasp":"vaspB","address":"0x56F5…","network":"ethereum"}
+     *
+     * network takes a friendly name ("ethereum", "sepolia", "bitcoin") or a
+     * CAIP-2 id ("eip155:1"). The address may be bare or already CAIP-10.
+     */
+    @PostMapping("/register")
+    public RegisterResponse register(@Valid @RequestBody RegisterRequest request) {
+        return addressOwnershipService.register(request);
+    }
+
+    /**
+     * GET /api/registration-status - is this address registered, and to whom?
+     *
+     * ?vasp=vaspB&address=0x56F5…&network=ethereum
+     * Returns {"registered": false, …} when nobody owns it.
+     */
+    @GetMapping("/registration-status")
+    public RegistrationStatus registrationStatus(
+            @RequestParam String vasp,
+            @RequestParam String address,
+            @RequestParam String network,
+            @RequestParam(required = false) String asset) {
+        return addressOwnershipService.status(vasp, address, network, asset);
     }
 
     /** POST /api/startPool - start polling Notabene for messages to this VASP. */

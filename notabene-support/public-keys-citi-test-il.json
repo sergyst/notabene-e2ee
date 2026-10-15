@@ -1,0 +1,14 @@
+{
+  "entityDID": "did:web:citi.com:test:il",
+  "encryptionKey": {
+    "id": "did:web:citi.com:test:il#pii",
+    "type": "JsonWebKey2020",
+    "controller": "did:web:citi.com:test:il",
+    "publicKeyJwk": {
+      "kty": "EC",
+      "crv": "P-256",
+      "x": "5R34WJ6c3y0cd2oVlOTDxTFvxYS2Ptc4AhOQoNq50Oc",
+      "y": "ScErycX0H2vcg4ea8wWlgH1JLHi_eDmVFRXva-61Qxk"
+    }
+  }
+}

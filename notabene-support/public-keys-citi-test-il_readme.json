@@ -1,0 +1,48 @@
+{
+  "_about": "Requested state for GET https://api.eu1.notabene.id/entity/did:web:citi.com:test:il/public-keys , which today returns 404 NO_ENCRYPTION_KEYS. The key below is ours: we hold the private half and it never leaves our infrastructure, which is what makes the PII exchange end-to-end rather than Notabene-managed.",
+  "_reference": "Shaped to match a working sandbox entity, did:web:delubacfr-efe52.sandbox.notabene.id:fr , whose /public-keys response is byte-identical to the #notabene-pii entry in its published DID document. We verified that match, so we assume /public-keys is served from the DID document and that publishing the entry below is what produces this response.",
+  "entityDID": "did:web:citi.com:test:il",
+  "desiredPublicKeysResponse": {
+    "entityDID": "did:web:citi.com:test:il",
+    "encryptionKey": {
+      "id": "did:web:citi.com:test:il#pii",
+      "type": "JsonWebKey2020",
+      "controller": "did:web:citi.com:test:il",
+      "publicKeyJwk": {
+        "kty": "EC",
+        "crv": "P-256",
+        "x": "5R34WJ6c3y0cd2oVlOTDxTFvxYS2Ptc4AhOQoNq50Oc",
+        "y": "ScErycX0H2vcg4ea8wWlgH1JLHi_eDmVFRXva-61Qxk"
+      }
+    }
+  },
+  "didDocumentChange": {
+    "_note": "Add this entry to verificationMethod and add its id to keyAgreement. Please KEEP the existing #notabene-pii entry so anything already in flight still decrypts; '#pii' outranks '#notabene-pii' in your key-selection order, so /public-keys will return ours.",
+    "addToVerificationMethod": {
+      "id": "did:web:citi.com:test:il#pii",
+      "type": "JsonWebKey2020",
+      "controller": "did:web:citi.com:test:il",
+      "publicKeyJwk": {
+        "kty": "EC",
+        "crv": "P-256",
+        "x": "5R34WJ6c3y0cd2oVlOTDxTFvxYS2Ptc4AhOQoNq50Oc",
+        "y": "ScErycX0H2vcg4ea8wWlgH1JLHi_eDmVFRXva-61Qxk"
+      }
+    },
+    "addToKeyAgreement": "did:web:citi.com:test:il#pii",
+    "requiredContext": "https://w3id.org/security/suites/jws-2020/v1"
+  },
+  "alternativeEncoding": {
+    "_note": "The same key as EcdsaSecp256r1VerificationKey2019 + publicKeyHex, if that shape suits your pipeline better. Compressed SEC1 P-256 point.",
+    "id": "did:web:citi.com:test:il#pii",
+    "type": "EcdsaSecp256r1VerificationKey2019",
+    "controller": "did:web:citi.com:test:il",
+    "publicKeyHex": "03e51df8589e9cdf2d1c776a1594e4c3c5316fc584b63ed738021390a0dab9d0e7"
+  },
+  "alsoRequested": [
+    "Publish this entity's DID document at a location that resolves. did:web:citi.com:test:il resolves per the did:web method to https://citi.com/test/il/did.json , which returns 404 - we do not control citi.com. Delubac's sandbox entity sits under *.sandbox.notabene.id and resolves. Either re-provision ours the same way, or tell us the exact URL you expect us to serve.",
+    "Confirm what raises a REQUIRE_PRESENTATION policy on a sandbox transfer. Transfers we create from did:web:citi.com:test:us naming did:web:citi.com:test:il as beneficiary VASP are not visible to that entity at all, and come back with empty policyEvaluations.",
+    "Confirm our tenant is Transact V2 and that /entities/{did}/tx plus /presentation is the correct integration path for these DIDs."
+  ],
+  "_privateKeyNotShared": "Only the public half is in this file. Never send us, or ask us for, the private key."
+}
