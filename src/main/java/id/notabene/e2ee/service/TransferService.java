@@ -15,15 +15,13 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 /** Reading transfers, from Notabene or from the local ledger, for one VASP or all of them. */
 @Service
+@Slf4j
 public class TransferService {
-
-    private static final Logger log = LoggerFactory.getLogger(TransferService.class);
 
     private final NotabeneProperties properties;
     private final NotabeneClient client;

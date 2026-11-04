@@ -5,8 +5,7 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
@@ -16,9 +15,8 @@ import org.springframework.web.client.RestClient;
  * they expire. https://devx.notabene.id/docs/authentication
  */
 @Service
+@Slf4j
 public class TokenService {
-
-    private static final Logger log = LoggerFactory.getLogger(TokenService.class);
 
     private record CachedToken(String token, Instant expiresAt) {
     }

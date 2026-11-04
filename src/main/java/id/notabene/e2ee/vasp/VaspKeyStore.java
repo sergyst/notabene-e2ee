@@ -17,8 +17,7 @@ import java.security.interfaces.ECPublicKey;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
@@ -28,9 +27,8 @@ import tools.jackson.databind.ObjectMapper;
  * the encryption end-to-end.
  */
 @Component
+@Slf4j
 public class VaspKeyStore {
-
-    private static final Logger log = LoggerFactory.getLogger(VaspKeyStore.class);
 
     private final NotabeneProperties properties;
     private final ObjectMapper json;

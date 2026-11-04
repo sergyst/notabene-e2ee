@@ -20,8 +20,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.stereotype.Service;
 
@@ -34,9 +33,8 @@ import org.springframework.stereotype.Service;
  * try from a laptop.
  */
 @Service
+@Slf4j
 public class PollingService {
-
-    private static final Logger log = LoggerFactory.getLogger(PollingService.class);
 
     private final NotabeneProperties properties;
     private final id.notabene.e2ee.notabene.NotabeneClient client;

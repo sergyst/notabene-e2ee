@@ -20,8 +20,7 @@ import id.notabene.e2ee.web.dto.SendRequest;
 import id.notabene.e2ee.web.dto.SendResponse;
 import java.util.List;
 import java.util.Map;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 /**
@@ -30,9 +29,8 @@ import org.springframework.stereotype.Service;
  * process.
  */
 @Service
+@Slf4j
 public class TravelRuleService {
-
-    private static final Logger log = LoggerFactory.getLogger(TravelRuleService.class);
 
     private final NotabeneProperties properties;
     private final NotabeneClient client;

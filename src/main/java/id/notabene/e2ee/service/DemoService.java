@@ -12,8 +12,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 /**
@@ -26,9 +25,8 @@ import org.springframework.stereotype.Service;
  * can see it in the HTTP response and in the application log.
  */
 @Service
+@Slf4j
 public class DemoService {
-
-    private static final Logger log = LoggerFactory.getLogger(DemoService.class);
 
     private static final String DEMO_SENDER_DID = "did:web:vasps.id:vaspa";
     private static final String DEMO_RECIPIENT_DID = "did:web:vasps.id:vaspb";

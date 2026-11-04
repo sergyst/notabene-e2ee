@@ -8,8 +8,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -25,9 +24,8 @@ import tools.jackson.databind.ObjectMapper;
  * Keys:      https://devx.notabene.id/reference/getentitypublickeys
  */
 @Service
+@Slf4j
 public class NotabeneClient {
-
-    private static final Logger log = LoggerFactory.getLogger(NotabeneClient.class);
 
     private final NotabeneProperties properties;
     private final TokenService tokenService;
