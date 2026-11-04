@@ -1,0 +1,10 @@
+{
+  "name": "notabene-e2ee-tools",
+  "private": true,
+  "type": "module",
+  "description": "Signs ownership attestations for POST /api/register",
+  "dependencies": {
+    "@noble/curves": "^1.9.0",
+    "@noble/hashes": "^1.8.0"
+  }
+}

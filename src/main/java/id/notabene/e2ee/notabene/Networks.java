@@ -64,6 +64,9 @@ public final class Networks {
 
     /** Join a network and an address into the CAIP-10 form the API expects. */
     public static String toCaip10(Network network, String address) {
+        if (address == null || address.isBlank()) {
+            throw new IllegalArgumentException("address is required");
+        }
         String trimmed = address.trim();
         String bare = trimmed.startsWith("did:pkh:") ? trimmed.substring("did:pkh:".length()) : trimmed;
 
@@ -74,9 +77,16 @@ public final class Networks {
                 throw new IllegalArgumentException("Address names chain \"" + chain + "\" but network is \""
                         + network.id() + "\". Give the address without a chain prefix, or make them agree.");
             }
-            return network.id() + ":" + bare.substring(lastColon + 1);
+            return network.id() + ":" + requireAccount(bare.substring(lastColon + 1));
         }
-        return network.id() + ":" + bare;
+        return network.id() + ":" + requireAccount(bare);
+    }
+
+    private static String requireAccount(String account) {
+        if (account.isBlank()) {
+            throw new IllegalArgumentException("address has a chain prefix but no account part");
+        }
+        return account;
     }
 
     public static java.util.List<String> knownNames() {

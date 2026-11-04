@@ -24,6 +24,17 @@ public class ApiExceptionHandler {
                 .body(body("notabene_api_error", e.getMessage(), e.getBody()));
     }
 
+    @ExceptionHandler(org.springframework.web.bind.MethodArgumentNotValidException.class)
+    public ResponseEntity<Map<String, Object>> invalidBody(
+            org.springframework.web.bind.MethodArgumentNotValidException e) {
+        String fields = e.getBindingResult().getFieldErrors().stream()
+                .map(f -> f.getField() + " " + f.getDefaultMessage())
+                .reduce((a, b) -> a + "; " + b)
+                .orElse("request body is invalid");
+        log.warn("Request rejected: {}", fields);
+        return ResponseEntity.badRequest().body(body("bad_request", fields, null));
+    }
+
     @ExceptionHandler({ IllegalArgumentException.class, IllegalStateException.class })
     public ResponseEntity<Map<String, Object>> badRequest(RuntimeException e) {
         log.warn("Request rejected: {}", e.getMessage());

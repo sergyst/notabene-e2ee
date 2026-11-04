@@ -14,6 +14,7 @@ import id.notabene.e2ee.vasp.VaspKeypair;
 import id.notabene.e2ee.web.dto.AddOwnershipRequest;
 import id.notabene.e2ee.web.dto.AddOwnershipResponse;
 import id.notabene.e2ee.web.dto.AddressOwnership;
+import id.notabene.e2ee.web.dto.Attestation;
 import id.notabene.e2ee.web.dto.DemoReport;
 import id.notabene.e2ee.web.dto.RegisterRequest;
 import id.notabene.e2ee.web.dto.RegisterResponse;
@@ -139,17 +140,36 @@ public class TravelRuleController {
     }
 
     /**
-     * POST /api/register - register a blockchain address to one of your VASPs,
-     * so counterparties discover that VASP as its owner.
+     * POST /api/register/complete - step 2 of registering a blockchain address
+     * to one of your VASPs, so counterparties discover that VASP as its owner.
      *
-     * {"vasp":"vaspB","address":"0x56F5…","network":"ethereum"}
+     * {"vasp":"vaspB","address":"0x56F5…","network":"ethereum",
+     *  "proof":{"attestation":"…","signature":"0x…"}}
      *
+     * The proof is mandatory: sign the message from GET /api/register/initiate.
      * network takes a friendly name ("ethereum", "sepolia", "bitcoin") or a
      * CAIP-2 id ("eip155:1"). The address may be bare or already CAIP-10.
      */
-    @PostMapping("/register")
+    @PostMapping("/register/complete")
     public RegisterResponse register(@Valid @RequestBody RegisterRequest request) {
         return addressOwnershipService.register(request);
+    }
+
+    /**
+     * GET /api/register/initiate - step 1 of registering an address: the exact
+     * message to sign.
+     *
+     * ?vasp=vaspB&address=0x56F5…&network=ethereum
+     * Sign the returned message verbatim, then POST it to /api/register/complete
+     * as proof.attestation alongside proof.signature. It carries a timestamp, so
+     * it cannot be rebuilt later.
+     */
+    @GetMapping("/register/initiate")
+    public Attestation registerInitiate(
+            @RequestParam String vasp,
+            @RequestParam String address,
+            @RequestParam String network) {
+        return addressOwnershipService.initiate(vasp, address, network);
     }
 
     /**

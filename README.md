@@ -42,7 +42,8 @@ piiMatches: true | mismatches: 0
 | `GET` | `/api/transfers` | Transfers for one VASP or all of them, newest first. |
 | `GET` | `/api/transfers/{id}?vasp=` | One transfer: stored ciphertext next to what that VASP decrypts. |
 | `GET` | `/api/samplePii` | The editable IVMS101 template. |
-| `POST` | `/api/register` | Register an address to one of your VASPs. |
+| `GET` | `/api/register/initiate` | Step 1 of registering an address: the exact message to sign. |
+| `POST` | `/api/register/complete` | Step 2: register the address to one of your VASPs, with the signed proof. |
 | `GET` | `/api/registration-status` | Is an address registered, and to whom? |
 | `GET`/`POST` | `/api/addressOwnership` | The same two operations, CAIP-10 in the address rather than a `network` field. |
 
@@ -90,19 +91,25 @@ curl -s "localhost:8080/api/transfers/<id>?vasp=vaspB&channel=local" | jq
 `decrypt=false` and decrypts locally, returning the ciphertext, the plaintext, the JWE header and a
 flat field list.
 
-### register / registration-status
+### register (initiate / complete) / registration-status
 
 ```bash
 curl -s "localhost:8080/api/registration-status?vasp=vaspB&address=0x56F5…&network=ethereum" | jq
 
-curl -s -X POST localhost:8080/api/register -H 'Content-Type: application/json' \
-  -d '{"vasp":"vaspB","address":"0x56F5…","network":"ethereum"}' | jq
+curl -s "localhost:8080/api/register/initiate?vasp=vaspB&address=0x56F5…&network=ethereum" | jq   # step 1
+# sign the returned message, then:
+curl -s -X POST localhost:8080/api/register/complete ...                                          # step 2
 ```
+
+Registration is always two steps and always carries a signed proof — see below.
 
 `network` takes a friendly name — `ethereum`, `sepolia`, `holesky`, `polygon`, `bitcoin` — or any
 CAIP-2 id such as `eip155:42161`. The address may be bare or already CAIP-10; if it names a chain
 that contradicts `network`, the call is rejected rather than silently reinterpreted. That matters:
 the same hex on two chains is two different registrations.
+
+Missing or blank `address`, an empty account after a chain prefix, and bean-validation failures on
+request bodies all return `400 bad_request` naming the offending field.
 
 `registration-status` answers `{"registered": false, …}` when nobody owns it, and otherwise names
 the owning VASP, its jurisdiction, and — when the owner is one of yours — its configured name.
@@ -112,6 +119,50 @@ the owning VASP, its jurisdiction, and — when the owner is one of yours — it
 > `CHAIN_MISMATCH`. Their model needs a fiat price per asset to enforce jurisdictional thresholds,
 > which testnet assets have not got. For Travel Rule testing the chain is notional anyway — nothing
 > settles on-chain — so use mainnet-shaped addresses and never settle them.
+
+#### Proving ownership
+
+A registration without a proof would only be a self-declaration ("the claimant says so"), and any
+VASP could claim any address. So `register/complete` requires a signature over the attestation, which
+Notabene verifies. The address is always registered to the calling VASP's own DID.
+
+> **Unverified:** the exact status Notabene reports for a proven registration (`PROVEN`? `CONFIRMED`?)
+> has not been checked against a live call. Discovery's documented values are `CONFIRMED`,
+> `UNCONFIRMED` and `NOT_FOUND`. Register an address with a proof in the sandbox and read the real
+> `confidence` before relying on a particular value.
+
+```bash
+# 1. get the exact message to sign (it carries a timestamp - sign it verbatim, don't rebuild it)
+curl -s "localhost:8080/api/register/initiate?vasp=vaspB&address=0x56F5…&network=ethereum" | jq
+
+# 2. sign it with the address's private key (see tools/ below)
+# 3. register with the proof
+curl -s -X POST localhost:8080/api/register/complete -H 'Content-Type: application/json' -d '{
+  "vasp":"vaspB","address":"0x56F5…","network":"ethereum",
+  "proof":{"type":"eip-191","attestation":"I certify that\n\n…","signature":"0x…"}}' | jq
+```
+
+| `proof` field | Required | Meaning |
+|---|---|---|
+| `proof` | **yes** | the whole object; a request without it is rejected with 400 |
+| `attestation` / `signature` | yes (both) | the signed message and the signature over it |
+| `type` | no | scheme, default `eip-191`; Notabene also accepts `eip-712`, `eip-1271`, `bip-137`, `bip-322`, `ed25519`, `siwe`, … |
+| `status` | no | default `verified` |
+| `xpub` / `chainSpecificData` | no | for schemes that need them |
+
+This server does **not** verify the signature — Notabene does. A proof with only one of
+`attestation`/`signature` is rejected with a 400.
+
+`tools/sign-attestation.mjs` signs EIP-191 messages for testing (the JVM can't: keccak-256 and
+secp256k1 would need BouncyCastle, and signing belongs with whoever custodies the key anyway):
+
+```bash
+cd tools && npm install
+node sign-attestation.mjs --new                                  # throwaway key + its address
+node sign-attestation.mjs --key 0x<privkey> --message "I certify that…"
+```
+
+It prints the address, and the `attestation` and `signature` to paste into `proof`.
 
 `GET`/`POST /api/addressOwnership` do the same two things with the chain carried inside the address.
 Both pairs share one service; use whichever suits the caller.
@@ -328,6 +379,8 @@ All of `application.yml` is overridable by environment variable.
 | `service/DemoService.java` | The offline round trip behind `/api/demo`. |
 | `service/TravelRuleService.java` | `/api/send`. |
 | `service/PollingService.java` | `/api/startPool` and `/api/stopPool`. |
+| `service/AddressOwnershipService.java` | register (initiate/complete), registration-status, and attestation/proof building. |
+| `tools/sign-attestation.mjs` | Node helper that EIP-191-signs an attestation, for testing proofs. |
 
 ## Notes and gotchas
 

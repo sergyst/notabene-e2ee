@@ -8,9 +8,16 @@ import id.notabene.e2ee.notabene.Networks;
 import id.notabene.e2ee.web.dto.AddOwnershipRequest;
 import id.notabene.e2ee.web.dto.AddOwnershipResponse;
 import id.notabene.e2ee.web.dto.AddressOwnership;
+import id.notabene.e2ee.web.dto.Attestation;
+import id.notabene.e2ee.web.dto.OwnershipProof;
 import id.notabene.e2ee.web.dto.RegisterRequest;
 import id.notabene.e2ee.web.dto.RegisterResponse;
 import id.notabene.e2ee.web.dto.RegistrationStatus;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -73,15 +80,66 @@ public class AddressOwnershipService {
         NotabeneProperties.Vasp caller = properties.requireVasp(request.vasp());
         Networks.Network net = Networks.resolve(request.network());
         String caip10 = Networks.toCaip10(net, request.address());
-        String owner = (request.owner() == null || request.owner().isBlank())
-                ? caller.getDid()
-                : request.owner();
+        String owner = caller.getDid();
 
-        Map<String, Object> response = client.confirmRelationship(caller, "did:pkh:" + caip10, owner);
-        log.info("{}: registered {} on {} to {}", request.vasp(), caip10, net.canonical(), owner);
+        Map<String, Object> response = client.confirmRelationship(
+                caller, "did:pkh:" + caip10, owner, proofBody(request.proof(), caip10));
+        log.info("{}: registered {} on {} to {} with a {} proof", request.vasp(), caip10, net.canonical(), owner,
+                proofType(request.proof()));
 
         return new RegisterResponse(request.vasp(), owner, caip10, response,
                 status(request.vasp(), request.address(), request.network(), request.asset()));
+    }
+
+    /**
+     * The exact message to sign. Mirrors the format in Notabene's proof-of-
+     * ownership example; it carries a timestamp, so the caller must sign the
+     * string we return rather than rebuild it.
+     */
+    public Attestation initiate(String vaspName, String address, String network) {
+        NotabeneProperties.Vasp caller = properties.requireVasp(vaspName);
+        Networks.Network net = Networks.resolve(network);
+        String caip10 = Networks.toCaip10(net, address);
+        String did = caller.getDid();
+
+        int lastColon = caip10.lastIndexOf(':');
+        String chain = caip10.substring(0, lastColon);
+        String bare = caip10.substring(lastColon + 1);
+        String when = DateTimeFormatter.ofPattern("EEE, dd MMM yyyy HH:mm:ss 'GMT'", Locale.ENGLISH)
+                .format(ZonedDateTime.now(ZoneOffset.UTC));
+
+        String message = "I certify that\n\n" + chain + " account " + bare
+                + "\n\nbelonged to " + did + "\n\non " + when;
+
+        return new Attestation(message, caip10, did, net.canonical(), "eip-191",
+                "Sign this message verbatim with the address's private key, then POST it to "
+                        + "/api/register/complete as proof.attestation together with proof.signature. "
+                        + "This server does not verify the signature - Notabene does.");
+    }
+
+    private static String proofType(OwnershipProof proof) {
+        return (proof.type() == null || proof.type().isBlank()) ? "eip-191" : proof.type();
+    }
+
+    /** Build the PATCH body carrying the signed proof. */
+    private static Map<String, Object> proofBody(OwnershipProof proof, String caip10) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("type", proofType(proof));
+        out.put("address", caip10);
+        // Both identify the ADDRESS, not its owner: Notabene checks proof.did
+        // against the "from" side of the relationship and rejects a mismatch
+        // with "Proof did does not match 'from' query".
+        out.put("did", "did:pkh:" + caip10);
+        out.put("attestation", proof.attestation());
+        out.put("proof", proof.signature());
+        out.put("status", (proof.status() == null || proof.status().isBlank()) ? "verified" : proof.status());
+        if (proof.xpub() != null && !proof.xpub().isBlank()) {
+            out.put("xpub", proof.xpub());
+        }
+        if (proof.chainSpecificData() != null && !proof.chainSpecificData().isEmpty()) {
+            out.put("chainSpecificData", proof.chainSpecificData());
+        }
+        return Map.of("proof", out);
     }
 
     private String resolveAsset(String asset, Networks.Network net) {

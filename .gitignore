@@ -5,3 +5,4 @@ keys/*.json
 .idea/
 .DS_Store
 /config/
+tools/node_modules/

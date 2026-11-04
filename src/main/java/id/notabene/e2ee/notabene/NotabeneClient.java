@@ -143,11 +143,17 @@ public class NotabeneClient {
      * https://devx.notabene.id/reference/confirmrelationship
      */
     public Map<String, Object> confirmRelationship(NotabeneProperties.Vasp caller, String from, String to) {
+        return confirmRelationship(caller, from, to, Map.of());
+    }
+
+    /** @param body may carry a "proof" object; an empty map is a plain self-declaration. */
+    public Map<String, Object> confirmRelationship(NotabeneProperties.Vasp caller, String from, String to,
+            Map<String, Object> body) {
         String did = encode(caller.getDid());
         String query = "?from=" + encode(from) + "&to=" + encode(to);
         return requestFirstThatWorks(caller, "PATCH", List.of(
                 "/entities/" + did + "/relationships" + query,
-                "/entity/" + did + "/relationships" + query), Map.of());
+                "/entity/" + did + "/relationships" + query), body);
     }
 
     /** Everything this entity knows about who owns which address. */
