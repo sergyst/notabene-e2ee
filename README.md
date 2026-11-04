@@ -372,6 +372,18 @@ All of `application.yml` is overridable by environment variable.
 | `notabene.polling.*` | 15s, limit 25, `incoming` | interval, page size, direction, history size |
 | `notabene.vasps.<name>.*` | vaspA, vaspB | `did`, `client-id`, `client-secret` — add as many as you like |
 
+## Logging
+
+Every outbound call — Notabene's API and its OAuth endpoint — is logged by the `notabene.http` logger
+at `DEBUG` (on by default in `application.yml`): the request line and body, then the status, timing and
+response body. The `Authorization` header is never logged, and `client_secret` / `access_token` values
+in JSON bodies are masked. Bodies over 10,000 characters are truncated. Presentations carry JWE
+ciphertext only, so they are safe to log.
+
+```yaml
+logging.level.notabene.http: INFO   # switch it off
+```
+
 ## Layout
 
 | Path | What it does |

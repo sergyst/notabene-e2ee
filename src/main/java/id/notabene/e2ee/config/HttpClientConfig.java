@@ -3,6 +3,7 @@ package id.notabene.e2ee.config;
 import java.time.Duration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.client.BufferingClientHttpRequestFactory;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
@@ -12,6 +13,9 @@ import org.springframework.web.client.RestClient;
  * Deliberately the JDK factory rather than SimpleClientHttpRequestFactory: the
  * latter is built on HttpURLConnection, which cannot issue PATCH, and
  * confirming an address relationship is a PATCH.
+ *
+ * The factory is buffered so the logging interceptor can read a response body
+ * and still leave it readable for the caller.
  */
 @Configuration
 public class HttpClientConfig {
@@ -20,6 +24,8 @@ public class HttpClientConfig {
     public RestClient.Builder restClientBuilder() {
         JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory();
         factory.setReadTimeout(Duration.ofSeconds(30));
-        return RestClient.builder().requestFactory(factory);
+        return RestClient.builder()
+                .requestFactory(new BufferingClientHttpRequestFactory(factory))
+                .requestInterceptor(new NotabeneHttpLogger());
     }
 }
