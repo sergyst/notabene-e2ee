@@ -65,19 +65,22 @@ comparison. The same thing is written to the application log.
 ```bash
 curl -s -X POST localhost:8080/api/send \
   -H 'Content-Type: application/json' \
-  -d '{"from":"vaspA","to":"vaspB"}' | jq
+  -d '{"from":"vaspA","beneficiaryAddress":"eip155:1:0x56F5…"}' | jq
 ```
 
 | Field | Required | Meaning |
 |---|---|---|
-| `from` / `to` | yes | configured VASP names, e.g. `vaspA`, `vaspB` |
+| `from` | yes | configured VASP name that originates, e.g. `vaspA` |
+| `beneficiaryAddress` | yes | settlement address, as CAIP-10 (`eip155:1:0x…`). Notabene is asked who owns it; that VASP is the beneficiary. There is no `to` field. |
+| `asset` | no | CAIP-19 asset for the ownership lookup; defaults to `notabene.transfer.asset` |
 | `mode` | no | `branch` (default) or `field` |
 | `transferId` | no | present PII on an existing transfer instead of creating one |
 | `policyId` | no | fulfil one specific policy instead of every open one |
 | `originatorId` / `beneficiaryId` | no | party identifiers on the transfer |
 | `pii` | no | your own IVMS101 object; defaults to `sample-pii.json` |
 
-It fetches vaspB's published key, creates the transfer, encrypts locally, and POSTs the ciphertext.
+It looks up the address's owner in Notabene (the owner must have registered it — see
+`register/complete`), fetches that VASP's published key, creates the transfer, encrypts locally, and POSTs the ciphertext.
 
 ### transfers
 
@@ -179,7 +182,9 @@ encrypt → store → decrypt path in the meantime; listing live transfers works
 
 ```bash
 curl -s -X POST localhost:8080/api/send -H 'Content-Type: application/json' \
-  -d '{"from":"vaspA","to":"vaspB","channel":"local"}' | jq
+  -d '{"from":"vaspA","beneficiaryAddress":"eip155:1:0x56F5…","channel":"local"}' | jq
+
+# the owner is still discovered from Notabene, and must be a VASP configured on this server
 ```
 
 ### startPool / stopPool
@@ -274,7 +279,7 @@ encrypting to its own key and the exchange is not end-to-end.
 
 ```bash
 curl -s -X POST localhost:8080/api/send -H 'Content-Type: application/json' \
-  -d '{"from":"vaspA","to":"vaspB"}' | jq '{transferId, recipientKid, warning}'
+  -d '{"from":"vaspA","beneficiaryAddress":"eip155:1:0x56F5…"}' | jq '{transferId, recipientKid, warning}'
 ```
 
 If `recipientKid` does not end in `#pii` or `#notabene-pii`, or `warning` is set, your key is not

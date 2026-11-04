@@ -114,25 +114,16 @@ public class TravelRuleService {
     }
 
     /**
-     * Name the beneficiary VASP, or find it. With no "to", the settlement
-     * address is put through address-ownership discovery and whoever owns it
-     * becomes the beneficiary - which is how a real originator works out where
-     * a withdrawal is going.
+     * Find the beneficiary: the settlement address is put through address-
+     * ownership discovery and whoever owns it becomes the beneficiary - which
+     * is how a real originator works out where a withdrawal is going.
      */
     private Beneficiary resolveBeneficiary(SendRequest request) {
-        if (request.to() != null && !request.to().isBlank()) {
-            return new Beneficiary(request.to(), properties.requireVasp(request.to()).getDid(), null);
-        }
-        if (request.beneficiaryAddress() == null || request.beneficiaryAddress().isBlank()) {
-            throw new IllegalArgumentException(
-                    "Give either \"to\" (a configured VASP name) or \"beneficiaryAddress\" to discover one.");
-        }
-
         AddressOwnership owner = addressOwnership.check(
                 request.from(), request.beneficiaryAddress(), request.asset());
         if (!owner.owned()) {
             throw new IllegalArgumentException("No VASP owns " + owner.address() + " (" + owner.confidence()
-                    + "). The owner must claim it first - POST /api/addressOwnership - or name \"to\" directly.");
+                    + "). The owner must register it first - POST /api/register/complete.");
         }
 
         String name = properties.findNameByDid(owner.agentDid());

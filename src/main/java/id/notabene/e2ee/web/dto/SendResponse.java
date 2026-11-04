@@ -8,7 +8,7 @@ public record SendResponse(
         String from,
         String to,
         String beneficiaryDid,
-        /** Set when the beneficiary VASP was discovered from an address rather than named. */
+        /** The settlement address the beneficiary VASP was discovered from. */
         String beneficiaryDiscoveredFrom,
         String recipientKid,
         /** notabene | local | explicit - where the encryption key came from. */

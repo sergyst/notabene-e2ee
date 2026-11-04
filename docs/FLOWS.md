@@ -116,7 +116,7 @@ private key. Notabene can tell you — *if* that VASP registered the address (th
    | `UNCONFIRMED` | Notabene inferred it (hashed-address service, analytics) — treat with care |
    | `NOT_FOUND` | nobody has claimed it. **You cannot send.** Ask the customer/counterparty, or use another channel. |
 
-2. **Send, letting the server discover the beneficiary for you.** Instead of `to`, pass the address:
+2. **Send.** You only pass the address; the server asks Notabene who owns it (there is no `to` field):
 
    ```bash
    curl -s -X POST localhost:8080/api/send -H 'Content-Type: application/json' -d '{
@@ -128,10 +128,9 @@ private key. Notabene can tell you — *if* that VASP registered the address (th
    ```
 
    Give the address in CAIP-10 form (as above) so the chain is unambiguous. `discoveredFrom` in the
-   response tells you the lookup path was used. If you already know the VASP, send `"to":"vaspB"`
-   instead and skip discovery.
+   response echoes the address the beneficiary was discovered from.
 
-   If nobody owns the address the call fails with 400 *"No VASP owns … The owner must claim it
+   If nobody owns the address the call fails with 400 *"No VASP owns … The owner must register it
    first"* — nothing is sent.
 
 3. **What `send` does with the discovered DID**
@@ -227,6 +226,5 @@ screening pipeline, not to this demo.
 | Claim an address | `GET /api/register/initiate` → sign → `POST /api/register/complete` |
 | See who owns an address | `GET /api/registration-status` |
 | Send PII to an address's owner | `POST /api/send` with `beneficiaryAddress` |
-| Send PII to a known VASP | `POST /api/send` with `to` |
 | Receive and decrypt | `POST /api/startPool` or `GET /api/transfers/{id}` |
 | Validate received IVMS101 | *not built yet* — see Flow 3, step B |
