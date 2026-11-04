@@ -5,8 +5,6 @@ import id.notabene.e2ee.notabene.Addresses;
 import id.notabene.e2ee.notabene.NotabeneApiException;
 import id.notabene.e2ee.notabene.NotabeneClient;
 import id.notabene.e2ee.notabene.Networks;
-import id.notabene.e2ee.web.dto.AddOwnershipRequest;
-import id.notabene.e2ee.web.dto.AddOwnershipResponse;
 import id.notabene.e2ee.web.dto.AddressOwnership;
 import id.notabene.e2ee.web.dto.Attestation;
 import id.notabene.e2ee.web.dto.OwnershipProof;
@@ -23,11 +21,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 /**
- * Who owns a blockchain address, and claiming one for yourself.
+ * Who owns a blockchain address, and registering one for yourself.
  *
  * This matters more than it looks: Notabene's receiving guide says a
  * counterparty will usually only send Travel Rule PII once you have confirmed
- * that the destination address is yours. An address nobody has claimed is an
+ * that the destination address is yours. An address nobody has registered is an
  * address nobody will send PII about.
  */
 @Service
@@ -170,36 +168,6 @@ public class AddressOwnershipService {
             }
             throw e;
         }
-    }
-
-    // ------------------------------------------------------------ original pair
-
-    /** Does this address have a known owner? */
-    public AddressOwnership check(String vaspName, String address, String asset) {
-        NotabeneProperties.Vasp caller = properties.requireVasp(vaspName);
-        String resolvedAsset = (asset == null || asset.isBlank()) ? properties.getTransfer().getAsset() : asset;
-        String query = Addresses.toCaip10(address);
-
-        Map<String, Object> response = client.discoverAddressOwnership(caller, resolvedAsset, query);
-        AddressOwnership ownership = toOwnership(response, query, resolvedAsset, vaspName);
-        log.info("{}: {} -> {} ({})", vaspName, query,
-                ownership.agentDid() == null ? "no owner found" : ownership.agentDid(), ownership.confidence());
-        return ownership;
-    }
-
-    /** Claim the address for an entity, then re-check so you can see it took. */
-    public AddOwnershipResponse claim(AddOwnershipRequest request) {
-        NotabeneProperties.Vasp caller = properties.requireVasp(request.vasp());
-        String owner = (request.owner() == null || request.owner().isBlank())
-                ? caller.getDid()
-                : request.owner();
-        String from = Addresses.toDidPkh(request.address());
-
-        Map<String, Object> response = client.confirmRelationship(caller, from, owner);
-        log.info("{}: claimed {} for {}", request.vasp(), from, owner);
-
-        return new AddOwnershipResponse(request.vasp(), from, owner, response,
-                check(request.vasp(), request.address(), request.asset()));
     }
 
     @SuppressWarnings("unchecked")

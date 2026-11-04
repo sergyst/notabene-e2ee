@@ -136,15 +136,12 @@ public class NotabeneClient {
     }
 
     /**
-     * Claim an address for an entity. PATCH upserts, so it both creates the
+     * Register an address to an entity. PATCH upserts, so it both creates the
      * relationship and confirms it.
      * https://devx.notabene.id/reference/confirmrelationship
+     *
+     * @param body carries the "proof" object that makes the registration verifiable
      */
-    public Map<String, Object> confirmRelationship(NotabeneProperties.Vasp caller, String from, String to) {
-        return confirmRelationship(caller, from, to, Map.of());
-    }
-
-    /** @param body may carry a "proof" object; an empty map is a plain self-declaration. */
     public Map<String, Object> confirmRelationship(NotabeneProperties.Vasp caller, String from, String to,
             Map<String, Object> body) {
         String did = encode(caller.getDid());

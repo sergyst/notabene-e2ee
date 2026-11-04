@@ -11,8 +11,6 @@ import id.notabene.e2ee.service.TransferService;
 import id.notabene.e2ee.service.TravelRuleService;
 import id.notabene.e2ee.vasp.VaspKeyStore;
 import id.notabene.e2ee.vasp.VaspKeypair;
-import id.notabene.e2ee.web.dto.AddOwnershipRequest;
-import id.notabene.e2ee.web.dto.AddOwnershipResponse;
 import id.notabene.e2ee.web.dto.Attestation;
 import id.notabene.e2ee.web.dto.DemoReport;
 import id.notabene.e2ee.web.dto.RegisterRequest;
@@ -113,15 +111,6 @@ public class TravelRuleController {
             @RequestParam String vasp,
             @RequestParam(required = false) String channel) {
         return transferService.detail(vasp, transferId, Channel.from(channel));
-    }
-
-    /**
-     * POST /api/addressOwnership - claim an address, so counterparties can
-     * discover who owns it. Upserts and confirms, then re-checks.
-     */
-    @PostMapping("/addressOwnership")
-    public AddOwnershipResponse addAddressOwnership(@Valid @RequestBody AddOwnershipRequest request) {
-        return addressOwnershipService.claim(request);
     }
 
     /**

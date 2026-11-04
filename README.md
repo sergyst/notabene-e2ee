@@ -45,7 +45,6 @@ piiMatches: true | mismatches: 0
 | `GET` | `/api/register/initiate` | Step 1 of registering an address: the exact message to sign. |
 | `POST` | `/api/register/complete` | Step 2: register the address to one of your VASPs, with the signed proof. |
 | `GET` | `/api/registration-status` | Is an address registered, and to whom? |
-| `POST` | `/api/addressOwnership` | Claim an address with no proof, chain carried in the address. Prefer `register/complete`. |
 
 `pollStatus` and `vasps` are additions — you asked for four endpoints, but polling is only useful if
 you can read what it found, and `vasps` is what makes the setup guide below actionable.
@@ -167,10 +166,6 @@ node sign-attestation.mjs --key 0x<privkey> --message "I certify that…"
 ```
 
 It prints the address, and the `attestation` and `signature` to paste into `proof`.
-
-`POST /api/addressOwnership` is an older, unproven claim with the chain carried inside the address. It
-cannot produce a verified registration; use `register/complete` instead. The old
-`GET /api/addressOwnership` lookup is gone — use `registration-status`.
 
 ### The local channel
 
