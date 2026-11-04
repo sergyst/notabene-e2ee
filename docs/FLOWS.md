@@ -121,13 +121,13 @@ private key. Notabene can tell you — *if* that VASP registered the address (th
    ```bash
    curl -s -X POST localhost:8080/api/send -H 'Content-Type: application/json' -d '{
      "from":"vaspA",
-     "beneficiaryAddress":"eip155:1:0xB…",
-     "asset":"eip155:1/slip44:60",
+     "beneficiaryAddress":"0xB…",
+     "network":"ethereum",
      "pii": { …your IVMS101… }
    }' | jq '{transferId, beneficiary, beneficiaryDid, discoveredFrom, recipientKid, warning}'
    ```
 
-   Give the address in CAIP-10 form (as above) so the chain is unambiguous. `discoveredFrom` in the
+   `network` is required, so a bare address can never be looked up on the wrong chain; an address that names a different chain is rejected. `discoveredFrom` in the
    response echoes the address the beneficiary was discovered from.
 
    If nobody owns the address the call fails with 400 *"No VASP owns … The owner must register it

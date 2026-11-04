@@ -45,7 +45,7 @@ piiMatches: true | mismatches: 0
 | `GET` | `/api/register/initiate` | Step 1 of registering an address: the exact message to sign. |
 | `POST` | `/api/register/complete` | Step 2: register the address to one of your VASPs, with the signed proof. |
 | `GET` | `/api/registration-status` | Is an address registered, and to whom? |
-| `GET`/`POST` | `/api/addressOwnership` | The same two operations, CAIP-10 in the address rather than a `network` field. |
+| `POST` | `/api/addressOwnership` | Claim an address with no proof, chain carried in the address. Prefer `register/complete`. |
 
 `pollStatus` and `vasps` are additions — you asked for four endpoints, but polling is only useful if
 you can read what it found, and `vasps` is what makes the setup guide below actionable.
@@ -65,14 +65,15 @@ comparison. The same thing is written to the application log.
 ```bash
 curl -s -X POST localhost:8080/api/send \
   -H 'Content-Type: application/json' \
-  -d '{"from":"vaspA","beneficiaryAddress":"eip155:1:0x56F5…"}' | jq
+  -d '{"from":"vaspA","beneficiaryAddress":"0x56F5…","network":"ethereum"}' | jq
 ```
 
 | Field | Required | Meaning |
 |---|---|---|
 | `from` | yes | configured VASP name that originates, e.g. `vaspA` |
-| `beneficiaryAddress` | yes | settlement address, as CAIP-10 (`eip155:1:0x…`). Notabene is asked who owns it; that VASP is the beneficiary. There is no `to` field. |
-| `asset` | no | CAIP-19 asset for the ownership lookup; defaults to `notabene.transfer.asset` |
+| `beneficiaryAddress` | yes | settlement address, bare or CAIP-10. Notabene is asked who owns it; that VASP is the beneficiary. There is no `to` field. |
+| `network` | yes | chain of that address: `ethereum`, `polygon`, … or a CAIP-2 id. An address naming a different chain is rejected. |
+| `asset` | no | CAIP-19 asset for the ownership lookup; derived from `network` |
 | `mode` | no | `branch` (default) or `field` |
 | `transferId` | no | present PII on an existing transfer instead of creating one |
 | `policyId` | no | fulfil one specific policy instead of every open one |
@@ -167,8 +168,9 @@ node sign-attestation.mjs --key 0x<privkey> --message "I certify that…"
 
 It prints the address, and the `attestation` and `signature` to paste into `proof`.
 
-`GET`/`POST /api/addressOwnership` do the same two things with the chain carried inside the address.
-Both pairs share one service; use whichever suits the caller.
+`POST /api/addressOwnership` is an older, unproven claim with the chain carried inside the address. It
+cannot produce a verified registration; use `register/complete` instead. The old
+`GET /api/addressOwnership` lookup is gone — use `registration-status`.
 
 ### The local channel
 
@@ -182,7 +184,7 @@ encrypt → store → decrypt path in the meantime; listing live transfers works
 
 ```bash
 curl -s -X POST localhost:8080/api/send -H 'Content-Type: application/json' \
-  -d '{"from":"vaspA","beneficiaryAddress":"eip155:1:0x56F5…","channel":"local"}' | jq
+  -d '{"from":"vaspA","beneficiaryAddress":"0x56F5…","network":"ethereum","channel":"local"}' | jq
 
 # the owner is still discovered from Notabene, and must be a VASP configured on this server
 ```
@@ -279,7 +281,7 @@ encrypting to its own key and the exchange is not end-to-end.
 
 ```bash
 curl -s -X POST localhost:8080/api/send -H 'Content-Type: application/json' \
-  -d '{"from":"vaspA","beneficiaryAddress":"eip155:1:0x56F5…"}' | jq '{transferId, recipientKid, warning}'
+  -d '{"from":"vaspA","beneficiaryAddress":"0x56F5…","network":"ethereum"}' | jq '{transferId, recipientKid, warning}'
 ```
 
 If `recipientKid` does not end in `#pii` or `#notabene-pii`, or `warning` is set, your key is not

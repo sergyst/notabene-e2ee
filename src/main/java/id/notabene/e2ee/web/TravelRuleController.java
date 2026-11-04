@@ -13,7 +13,6 @@ import id.notabene.e2ee.vasp.VaspKeyStore;
 import id.notabene.e2ee.vasp.VaspKeypair;
 import id.notabene.e2ee.web.dto.AddOwnershipRequest;
 import id.notabene.e2ee.web.dto.AddOwnershipResponse;
-import id.notabene.e2ee.web.dto.AddressOwnership;
 import id.notabene.e2ee.web.dto.Attestation;
 import id.notabene.e2ee.web.dto.DemoReport;
 import id.notabene.e2ee.web.dto.RegisterRequest;
@@ -114,20 +113,6 @@ public class TravelRuleController {
             @RequestParam String vasp,
             @RequestParam(required = false) String channel) {
         return transferService.detail(vasp, transferId, Channel.from(channel));
-    }
-
-    /**
-     * GET /api/addressOwnership - does this address have a known owner?
-     *
-     * ?vasp=vaspA&address=0x2222…&asset=eip155:1/slip44:60
-     * The address may be bare, CAIP ("eip155:1:0x…") or a did:pkh.
-     */
-    @GetMapping("/addressOwnership")
-    public AddressOwnership addressOwnership(
-            @RequestParam String vasp,
-            @RequestParam String address,
-            @RequestParam(required = false) String asset) {
-        return addressOwnershipService.check(vasp, address, asset);
     }
 
     /**

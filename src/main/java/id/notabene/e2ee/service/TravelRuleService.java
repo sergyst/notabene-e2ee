@@ -14,7 +14,7 @@ import id.notabene.e2ee.vasp.LocalLedger;
 import id.notabene.e2ee.vasp.VaspKeyStore;
 import java.time.Instant;
 import java.util.UUID;
-import id.notabene.e2ee.web.dto.AddressOwnership;
+import id.notabene.e2ee.web.dto.RegistrationStatus;
 import id.notabene.e2ee.web.dto.RecipientKey;
 import id.notabene.e2ee.web.dto.SendRequest;
 import id.notabene.e2ee.web.dto.SendResponse;
@@ -86,7 +86,7 @@ public class TravelRuleService {
                     beneficiary.did(),
                     orDefault(request.originatorId(), sender.getDid() + ":customer:john-doe"),
                     orDefault(request.beneficiaryId(), beneficiary.did() + ":customer:jane-smith"),
-                    request.beneficiaryAddress());
+                    beneficiary.discoveredFrom());
             Map<String, Object> created = client.createTransfer(sender, body);
             transferId = extractTransferId(created);
             log.info("created transfer {}", transferId);
@@ -117,17 +117,16 @@ public class TravelRuleService {
      * is how a real originator works out where a withdrawal is going.
      */
     private Beneficiary resolveBeneficiary(SendRequest request) {
-        AddressOwnership owner = addressOwnership.check(
-                request.from(), request.beneficiaryAddress(), request.asset());
-        if (!owner.owned()) {
-            throw new IllegalArgumentException("No VASP owns " + owner.address() + " (" + owner.confidence()
+        RegistrationStatus owner = addressOwnership.status(
+                request.from(), request.beneficiaryAddress(), request.network(), request.asset());
+        if (!owner.registered()) {
+            throw new IllegalArgumentException("No VASP owns " + owner.caip10() + " (" + owner.confidence()
                     + "). The owner must register it first - POST /api/register/complete.");
         }
 
-        String name = properties.findNameByDid(owner.agentDid());
-        log.info("discovered beneficiary {} ({}) from address {}",
-                owner.agentDid(), owner.agentName(), owner.address());
-        return new Beneficiary(name, owner.agentDid(), owner.address());
+        RegistrationStatus.VaspRef vasp = owner.vasp();
+        log.info("discovered beneficiary {} ({}) from address {}", vasp.did(), vasp.name(), owner.caip10());
+        return new Beneficiary(vasp.configuredName(), vasp.did(), owner.caip10());
     }
 
     private record ResolvedKey(Jwk jwk, String kid, String source, String warning) {

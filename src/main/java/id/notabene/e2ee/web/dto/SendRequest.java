@@ -6,9 +6,10 @@ import java.util.Map;
 /**
  * @param from         configured VASP name that originates (e.g. "vaspA")
  * @param beneficiaryAddress settlement address; Notabene is asked who owns it and that VASP
- *                     becomes the beneficiary. Give it as CAIP-10 ("eip155:1:0x…") so the
- *                     chain is unambiguous.
- * @param asset        for address-ownership discovery; defaults to notabene.transfer.asset
+ *                     becomes the beneficiary. Bare ("0x…") or already CAIP-10.
+ * @param network      chain of that address: a friendly name ("ethereum") or a CAIP-2 id
+ *                     ("eip155:1"). An address naming a different chain is rejected.
+ * @param asset        CAIP-19 override for address-ownership discovery; derived from the network
  * @param mode         branch or field; defaults to notabene.pii-mode
  * @param channel      notabene (default) or local, an in-memory stand-in
  * @param transferId   present PII on an existing transfer instead of creating one
@@ -19,6 +20,7 @@ import java.util.Map;
 public record SendRequest(
         @NotBlank String from,
         @NotBlank String beneficiaryAddress,
+        @NotBlank String network,
         String asset,
         String mode,
         String channel,
