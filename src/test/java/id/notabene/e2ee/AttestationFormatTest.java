@@ -15,7 +15,10 @@ import org.junit.jupiter.api.Test;
  */
 class AttestationFormatTest {
 
-    /** Verbatim from https://devx.notabene.id/docs/create-outgoing-transfers */
+    /**
+     * Verbatim from https://devx.notabene.id/v2.0/docs/create-outgoing-transfers ("Proof of ownership").
+     * It is an example there, not a documented requirement - the docs state no rule for the wording.
+     */
     private static final String NOTABENE_EXAMPLE =
             "I certify that\n\neip155:1 account 0x9ecfbb28554cade5da58c82469f65f31aebd272b\n\n"
             + "belonged to did:key:z6MksamQq4oVRktkeSDxs6pbixYFUaUca8xgCvnTVLQA5PC5\n\n"

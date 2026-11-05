@@ -34,9 +34,11 @@ belongs to my VASP's DID."*
    any VASP claim any address, so this server does not offer it. Notabene verifies a signature made
    with the address's private key. The address is always registered to the calling VASP's own DID.
 
-   > **Unverified:** which status Notabene then reports for a proven registration (`PROVEN`?
-   > `CONFIRMED`?) has not been checked against a live call. Register one in the sandbox and read the
-   > real `confidence` value.
+   > **Documented vs. verified:** Notabene's guide says signature proof is the only route to the
+   > relationship status `PROVEN`, but the lookup reports a `confidence` (`CONFIRMED` / `UNCONFIRMED` /
+   > `NOT_FOUND`), and how the two map has not been checked against a live call. The attestation wording
+   > is only an example in their guide, not a documented requirement. Register one in the sandbox and
+   > read the real `confidence` value.
 
 4. **Initiate — get the message to sign.** It embeds a timestamp, so fetch it once and sign *that
    exact string* — do not rebuild it later.
@@ -112,7 +114,7 @@ private key. Notabene can tell you — *if* that VASP registered the address (th
 
    | `confidence` | Meaning |
    |---|---|
-   | `CONFIRMED` | owner registered it (Flow 1). Whether a *proven* registration reports a different value is unverified. |
+   | `CONFIRMED` | owner registered it (Flow 1). Notabene documents `PROVEN` as the relationship status for a signature proof; whether lookup surfaces that as a different `confidence` is unverified. |
    | `UNCONFIRMED` | Notabene inferred it (hashed-address service, analytics) — treat with care |
    | `NOT_FOUND` | nobody has claimed it. **You cannot send.** Ask the customer/counterparty, or use another channel. |
 

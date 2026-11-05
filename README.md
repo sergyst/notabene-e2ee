@@ -129,10 +129,15 @@ A registration without a proof would only be a self-declaration ("the claimant s
 VASP could claim any address. So `register/complete` requires a signature over the attestation, which
 Notabene verifies. The address is always registered to the calling VASP's own DID.
 
-> **Unverified:** the exact status Notabene reports for a proven registration (`PROVEN`? `CONFIRMED`?)
-> has not been checked against a live call. Discovery's documented values are `CONFIRMED`,
-> `UNCONFIRMED` and `NOT_FOUND`. Register an address with a proof in the sandbox and read the real
-> `confidence` before relying on a particular value.
+> **Documented vs. verified.** Notabene's [outgoing-transfers guide](https://devx.notabene.id/v2.0/docs/create-outgoing-transfers)
+> says a signature proof is "the only method to update to status `PROVEN`" — that is the status of the
+> *relationship*. What it does not say is how that surfaces in address lookup: `registration-status`
+> reports `confidence`, documented as `CONFIRMED`, `UNCONFIRMED` or `NOT_FOUND`. That mapping has not
+> been checked against a live call.
+>
+> The attestation wording is also only an *example* in that guide — no rule about wording or date
+> format is documented — so that Notabene accepts our copy of it is likewise unconfirmed. Register an
+> address with a proof in the sandbox and read the real `confidence` before relying on either.
 
 ```bash
 # 1. get the exact message to sign (it carries a timestamp - sign it verbatim, don't rebuild it)

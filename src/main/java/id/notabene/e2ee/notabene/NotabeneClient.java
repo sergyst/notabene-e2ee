@@ -138,7 +138,7 @@ public class NotabeneClient {
     /**
      * Register an address to an entity. PATCH upserts, so it both creates the
      * relationship and confirms it.
-     * https://devx.notabene.id/reference/confirmrelationship
+     * https://devx.notabene.id/v2.0/reference/confirmrelationship
      *
      * @param body carries the "proof" object that makes the registration verifiable
      */

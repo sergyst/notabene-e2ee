@@ -8,7 +8,8 @@ import java.util.Map;
  *
  * Without one a registration would only be a self-declaration ("the claimant
  * says so"), so POST /api/register/complete requires it and Notabene verifies it.
- * The status Notabene then reports is unverified against a live call.
+ * Notabene documents PROVEN as the relationship status for a signature proof;
+ * how lookup reports it is unverified against a live call.
  *
  * This server does NOT verify the signature - Notabene does. Sign the exact
  * string returned by GET /api/register/initiate, because the attestation
