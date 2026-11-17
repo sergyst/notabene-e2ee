@@ -132,9 +132,25 @@ public class IvmsCrypto {
 
     // ------------------------------------------------------------------ lookup
 
-    /** Find the ivms101 object inside a Notabene transfer response, wherever they put it. */
+    /**
+     * The encrypted IVMS101 of a transfer. v2.1 puts each party's JWE at
+     * originator.ivms_encrypted / beneficiary.ivms_encrypted, which is
+     * reassembled here into the {originator: jwe, beneficiary: jwe} shape that
+     * decrypt() walks. Older shapes are still searched for.
+     */
     @SuppressWarnings("unchecked")
     public Map<String, Object> findIvms(Object transfer) {
+        if (transfer instanceof Map<?, ?> top) {
+            Map<String, Object> assembled = new LinkedHashMap<>();
+            for (String role : List.of("originator", "beneficiary")) {
+                if (top.get(role) instanceof Map<?, ?> party && party.get("ivms_encrypted") instanceof String jwe) {
+                    assembled.put(role, jwe);
+                }
+            }
+            if (!assembled.isEmpty()) {
+                return assembled;
+            }
+        }
         Set<Object> seen = Collections.newSetFromMap(new IdentityHashMap<>());
         Deque<Object> stack = new ArrayDeque<>();
         if (transfer != null) {

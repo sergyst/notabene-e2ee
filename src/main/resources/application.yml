@@ -12,27 +12,22 @@ logging:
     notabene.http: DEBUG
 
 notabene:
-  # EU node. For the US node use https://api.us1.notabene.id and
-  # https://us.auth.notabene.id/oauth/token.
-  api-base: https://api.eu1.notabene.id
+  # Notabene v2.1. Sandbox shown; production is https://eu-a.notabene.id (EU)
+  # or https://us-a.notabene.id with https://us.auth.notabene.id/oauth/token (US).
+  api-base: https://sandbox.notabene.id
   auth-url: https://auth.notabene.id/oauth/token
   # Defaults to api-base when blank.
   audience: ""
-  #  API=https://api.eu1.notabene.id
-  #  AUTH=https://auth.notabene.id/oauth/token
-  #  AUDIENCE=https://api.eu1.notabene.id
 
-  # branch = one JWE for ivms101.originator and one for ivms101.beneficiary
-  # field  = one JWE per IVMS101 leaf value (what Notabene's own examples show)
+  # branch = one JWE per party (originator, beneficiary). This is what v2.1
+  #          takes: POST /transfers/{id}/parties/{role}/encrypted-pii.
+  # field  = one JWE per IVMS101 leaf value. Offline demo and local channel only.
   pii-mode: branch
 
   # Where keys/<vasp>.json lives. Same file format as the JavaScript project,
   # so the two can share keys. Generated on first use.
   key-dir: keys
   key-fragment: pii
-
-  # Skip jurisdictional validation of the presentation while experimenting.
-  skip-validation: true
 
   transfer:
     asset: eip155:1/slip44:60
@@ -49,16 +44,13 @@ notabene:
   # Add as many as you like; /api/send names two of them.
   vasps:
     vaspA:
-#      did: ${VASP_A_DID:did:web:vasps.id:vaspa}
       did: ${VASP_A_DID:did:web:citi.com:test:us}
-#      client-id: ${VASP_A_CLIENT_ID:}
       client-id: ${VASP_A_CLIENT_ID:}
-#      client-secret: ${VASP_A_CLIENT_SECRET:}
       client-secret: ${VASP_A_CLIENT_SECRET:}
+      # Blank = derived from the DID and created in Notabene on first use.
+      customer-id: ${VASP_A_CUSTOMER_ID:}
     vaspB:
-#      did: ${VASP_B_DID:did:web:vasps.id:vaspb}
       did: ${VASP_B_DID:did:web:citi.com:test:il}
-#      client-id: ${VASP_B_CLIENT_ID:}
       client-id: ${VASP_B_CLIENT_ID:}
-#      client-secret: ${VASP_B_CLIENT_SECRET:}
       client-secret: ${VASP_B_CLIENT_SECRET:}
+      customer-id: ${VASP_B_CUSTOMER_ID:}

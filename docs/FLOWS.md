@@ -12,7 +12,7 @@ and message broker — it never sees plaintext PII.
 
 **Why.** Counterparties find out who owns an address by asking Notabene. An address nobody has
 registered is an address nobody will send Travel Rule PII about. Registering says: *"this address
-belongs to my VASP's DID."*
+belongs to my VASP's Notabene customer, and here is the proof."*
 
 **Who calls.** The VASP that controls the private key of address A.
 
@@ -30,15 +30,16 @@ belongs to my VASP's DID."*
 
    `{"registered": false}` means nobody owns it yet.
 
-3. **Registration is always proven.** A bare self-declaration ("the claimant says so") would let
-   any VASP claim any address, so this server does not offer it. Notabene verifies a signature made
-   with the address's private key. The address is always registered to the calling VASP's own DID.
+3. **Registration is always proven.** `register/complete` first registers the wallet
+   (`POST /api/v1/wallets`, under the VASP's customer) and then submits a proof
+   (`POST /api/v1/customers/{customer}/wallets/{address}/proofs`). Signature types (`eip-191`,
+   `bip-322`, `bip-137-xpub`) are verified by Notabene on submission; `self-declaration` and
+   `screenshot` stay `Submitted` until their compliance team decides.
 
-   > **Documented vs. verified:** Notabene's guide says signature proof is the only route to the
-   > relationship status `PROVEN`, but the lookup reports a `confidence` (`CONFIRMED` / `UNCONFIRMED` /
-   > `NOT_FOUND`), and how the two map has not been checked against a live call. The attestation wording
-   > is only an example in their guide, not a documented requirement. Register one in the sandbox and
-   > read the real `confidence` value.
+   > **Documented vs. verified:** the v2.1 docs do not say which fields each proof type needs and
+   > mandate no attestation wording. A proof is for a *self-hosted* wallet, which Notabene does not
+   > publish to counterparties, so the address may not be discoverable by others. Register one in the
+   > sandbox and read the real `status` and `source` values.
 
 4. **Initiate — get the message to sign.** It embeds a timestamp, so fetch it once and sign *that
    exact string* — do not rebuild it later.
@@ -78,10 +79,10 @@ belongs to my VASP's DID."*
 
 ### What happens inside
 
-`AddressOwnershipService.register` (behind `POST /api/register/complete`) → builds CAIP-10 (`eip155:1:0xA…`) → `PATCH
-/entities/{yourDID}/relationships?from=did:pkh:<caip10>&to=<yourDID>` with the proof as body →
-re-runs discovery. The `proof.did` is the *address* (`did:pkh:…`), not the owner — Notabene rejects a
-mismatch with "Proof did does not match 'from' query".
+`AddressOwnershipService.register` (behind `POST /api/register/complete`) → builds CAIP-10 (`eip155:1:0xA…`) →
+ensures the customer (`POST /api/v1/customers`, a 409 is fine) → `POST /api/v1/wallets` →
+`POST /api/v1/customers/{customer}/wallets/{caip10}/proofs` → re-runs discovery
+(`POST /api/v1/wallet-ownerships/discover`).
 
 This server does not verify the signature; Notabene does. A bad signature comes back as a Notabene
 error (502 `notabene_api_error`).
@@ -92,7 +93,8 @@ error (502 `notabene_api_error`).
 |---|---|
 | 400 "Address names chain X but network is Y" | the address already carried a chain prefix that disagrees with `network` |
 | Notabene error about asset / chain | testnet network, or unsupported chain |
-| 400 `proof must not be null` / `proof.signature must not be blank` | the proof, or one of its two required fields, is missing |
+| 400 `proof must not be null` / `A eip-191 proof needs proof.signature` | the proof, its `type`, or the field that type needs is missing |
+| 409 from Notabene | another of your customers already holds a proof of that address |
 
 ---
 
@@ -110,13 +112,9 @@ private key. Notabene can tell you — *if* that VASP registered the address (th
    ```
 
    The answer is the **beneficiary VASP**: its DID, name, jurisdiction, and — if it is one of your
-   configured VASPs — its local name. `confidence` tells you how much to trust it:
-
-   | `confidence` | Meaning |
-   |---|---|
-   | `CONFIRMED` | owner registered it (Flow 1). Notabene documents `PROVEN` as the relationship status for a signature proof; whether lookup surfaces that as a different `confidence` is unverified. |
-   | `UNCONFIRMED` | Notabene inferred it (hashed-address service, analytics) — treat with care |
-   | `NOT_FOUND` | nobody has claimed it. **You cannot send.** Ask the customer/counterparty, or use another channel. |
+   configured VASPs — its local name. `source` says how Notabene knows (e.g. `AddressHash`: the owner
+   registered it). `{"registered": false}` means nobody owns the address. **You cannot send.** Ask the
+   customer/counterparty, or use another channel.
 
 2. **Send.** You only pass the address; the server asks Notabene who owns it (there is no `to` field):
 
@@ -137,12 +135,13 @@ private key. Notabene can tell you — *if* that VASP registered the address (th
 
 3. **What `send` does with the discovered DID**
 
-   1. **Find the key to encrypt to.** Asks Notabene for the beneficiary's public encryption keys
-      (`/entities/{did}/public-keys`).
-   2. **Create the transfer** (originator → beneficiary DID, asset, amount, addresses).
+   1. **Find the key to encrypt to.** Asks Notabene to assess the transfer with
+      `include_pubkeys=true`; the answer carries the beneficiary VASP's encryption key.
+   2. **Create the transfer** (`POST /api/v1/transfers`: originator customer, beneficiary DID, asset,
+      amount, addresses).
    3. **Encrypt locally** with ECDH-ES + AES-256-GCM, bound to your DID (`apu`) and the recipient
       key id (`apv`). Plaintext never leaves this process.
-   4. **Present the ciphertext** to Notabene, which routes it to the beneficiary VASP.
+   4. **Send one JWE per party** (`POST /api/v1/transfers/{id}/parties/{originator|beneficiary}/encrypted-pii`); Notabene routes it to the beneficiary VASP.
 
 4. **Check the warning.** `recipientKid` should end in `#pii` (their own key). If it ends in
    `#notabene-pii`, or `warning` is set, the beneficiary has not published their own key and Notabene
@@ -172,7 +171,7 @@ You are the **beneficiary VASP**. Someone sent PII about a transfer to an addres
    or list on demand: `GET /api/transfers?vasp=vaspB&direction=incoming`. (In production prefer
    Notabene's `tap.requirePresentationSatisfied` webhook; polling just needs no public URL.)
 
-2. **Fetch one transfer with `decrypt=false`** — we want the ciphertext, not Notabene's copy:
+2. **Fetch one transfer with `include_ivms=true`** — each party's `ivms_encrypted` JWE comes back for us to decrypt:
 
    ```bash
    curl -s "localhost:8080/api/transfers/<id>?vasp=vaspB" | jq

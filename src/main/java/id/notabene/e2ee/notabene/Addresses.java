@@ -3,8 +3,8 @@ package id.notabene.e2ee.notabene;
 /**
  * Blockchain addresses turn up in three shapes across this API - bare
  * ("0x1234…"), CAIP-10 ("eip155:1:0x1234…") and did:pkh
- * ("did:pkh:eip155:1:0x1234…"). Discovery takes the first two; relationships
- * and transfer agents insist on the third.
+ * ("did:pkh:eip155:1:0x1234…"). v2.1 wallets, proofs, discovery and
+ * transfers all take CAIP-10 (a bare EVM address is read as Ethereum mainnet).
  */
 public final class Addresses {
 
@@ -30,7 +30,7 @@ public final class Addresses {
                 + "\" belongs to. Give a CAIP-10 address such as eip155:1:0x… or a did:pkh:… .");
     }
 
-    /** What relationships and transfer agents expect. */
+    /** The did:pkh form, for callers that still want a DID. */
     public static String toDidPkh(String address) {
         String trimmed = address.trim();
         return trimmed.startsWith("did:") ? trimmed : "did:pkh:" + toCaip10(trimmed);

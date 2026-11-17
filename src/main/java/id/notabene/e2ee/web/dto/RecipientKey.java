@@ -8,7 +8,7 @@ import java.util.Map;
  * Omit it and the server asks Notabene for the counterparty's published key,
  * which is the normal path. Supply it when that lookup cannot work - for
  * instance when the counterparty's did:web does not resolve, so
- * GET /entities/:did/public-keys answers NO_ENCRYPTION_KEYS - or when you want
+ * the assess call returns no encryption key - or when you want
  * to pin the key yourself rather than trust a directory lookup.
  *
  * End-to-end encryption needs the recipient's public key either way: doing the

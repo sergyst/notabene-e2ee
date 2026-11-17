@@ -137,8 +137,8 @@ public class PollingService {
                     continue; // already handled
                 }
 
-                // decrypt=false: we want the ciphertext, not Notabene's copy.
-                Map<String, Object> full = client.getTransfer(vasp, transferId, false);
+                // include_ivms: each party's ivms_encrypted JWE, which we decrypt ourselves.
+                Map<String, Object> full = client.getTransfer(vasp, transferId, true);
                 Map<String, Object> encryptedIvms = ivmsCrypto.findIvms(full);
                 if (encryptedIvms == null) {
                     log.debug("{}: transfer {} has no ivms101 yet", poller.vaspName, transferId);
@@ -159,8 +159,7 @@ public class PollingService {
                     ReceivedMessage message = new ReceivedMessage(
                             transferId,
                             Instant.now(),
-                            String.valueOf(full.getOrDefault("status",
-                                    asMap(full.get("transfer")).getOrDefault("status", "unknown"))),
+                            String.valueOf(full.getOrDefault("status", "unknown")),
                             result.parts().size(),
                             result.payload());
                     synchronized (poller.history) {
@@ -195,11 +194,6 @@ public class PollingService {
                 poller.lastError.get(),
                 history,
                 message);
-    }
-
-    @SuppressWarnings("unchecked")
-    private static Map<String, Object> asMap(Object value) {
-        return value instanceof Map<?, ?> map ? (Map<String, Object>) map : Map.of();
     }
 
     @PreDestroy

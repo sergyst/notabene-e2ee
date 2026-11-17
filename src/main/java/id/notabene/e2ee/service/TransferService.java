@@ -113,16 +113,13 @@ public class TransferService {
         } else {
             Map<String, Object> full;
             try {
-                // decrypt=false: we want the ciphertext, not Notabene's copy.
-                full = client.getTransfer(vasp, transferId, false);
+                // include_ivms: each party's ivms_encrypted JWE, which we decrypt ourselves.
+                full = client.getTransfer(vasp, transferId, true);
             } catch (NotabeneApiException e) {
                 throw new IllegalArgumentException(
                         "Could not load transfer " + transferId + " as " + vaspName + ": " + e.getMessage());
             }
-            Object body = full.get("transfer") instanceof Map<?, ?> m ? m : full;
-            @SuppressWarnings("unchecked")
-            Map<String, Object> raw = (Map<String, Object>) body;
-            summary = toSummary(vaspName, vasp.getDid(), Channel.NOTABENE, raw);
+            summary = toSummary(vaspName, vasp.getDid(), Channel.NOTABENE, full);
             encrypted = ivmsCrypto.findIvms(full);
         }
 
@@ -154,10 +151,12 @@ public class TransferService {
         String direction = str(raw.get("direction"));
         String originator = partyId(raw.get("originator"));
         String beneficiary = partyId(raw.get("beneficiary"));
-        String counterparty = "OUTGOING".equalsIgnoreCase(direction) ? beneficiary : originator;
+        String counterparty = raw.get("counterparty") != null
+                ? str(raw.get("counterparty"))
+                : "OUTGOING".equalsIgnoreCase(direction) ? beneficiary : originator;
 
         return new TransferSummary(
-                str(raw.getOrDefault("id", raw.get("@id"))),
+                str(raw.get("id")),
                 vaspName,
                 vaspDid,
                 channel.lower(),
@@ -165,7 +164,7 @@ public class TransferService {
                 str(raw.get("status")),
                 str(raw.get("asset")),
                 str(raw.get("amount")),
-                str(raw.get("createdAt")),
+                str(raw.get("created_at")),
                 originator,
                 beneficiary,
                 counterparty,
@@ -175,7 +174,7 @@ public class TransferService {
 
     private static String partyId(Object party) {
         if (party instanceof Map<?, ?> map) {
-            Object id = map.get("@id");
+            Object id = map.get("id");
             return id == null ? null : id.toString();
         }
         return party == null ? null : party.toString();

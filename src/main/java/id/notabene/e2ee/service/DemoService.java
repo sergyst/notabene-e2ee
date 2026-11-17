@@ -57,7 +57,7 @@ public class DemoService {
 
         Map<String, Object> header = EcdhEsJwe.readHeader(encrypted.parts().get(0).jwe());
 
-        // 2 - this is exactly the body of POST /entities/:did/tx/:id/presentation.
+        // 2 - this is what POST /transfers/{id}/parties/{role}/encrypted-pii carries, one JWE per party.
         Map<String, Object> wirePayload = new LinkedHashMap<>();
         wirePayload.put("ivms101", encrypted.payload());
 

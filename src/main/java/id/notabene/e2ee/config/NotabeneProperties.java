@@ -11,8 +11,11 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "notabene")
 public class NotabeneProperties {
 
-    /** EU node by default; use https://api.us1.notabene.id for the US node. */
-    private String apiBase = "https://api.eu1.notabene.id";
+    /**
+     * Notabene v2.1 base URL, which is also the token audience. Sandbox by
+     * default; https://eu-a.notabene.id or https://us-a.notabene.id for production.
+     */
+    private String apiBase = "https://sandbox.notabene.id";
 
     private String authUrl = "https://auth.notabene.id/oauth/token";
 
@@ -28,9 +31,6 @@ public class NotabeneProperties {
     /** DIDDoc key id fragment. Notabene resolves "#pii" first. */
     private String keyFragment = "pii";
 
-    /** Skip jurisdictional validation of the presentation while experimenting. */
-    private boolean skipValidation = true;
-
     private final Transfer transfer = new Transfer();
     private final Polling polling = new Polling();
 
@@ -41,6 +41,20 @@ public class NotabeneProperties {
         private String did;
         private String clientId;
         private String clientSecret;
+        private String customerId;
+
+        /**
+         * IRI of the Notabene customer this VASP registers wallets under
+         * (urn:uuid:...). Blank means a stable one is derived from the DID and
+         * created on first use.
+         */
+        public String getCustomerId() {
+            return customerId;
+        }
+
+        public void setCustomerId(String customerId) {
+            this.customerId = customerId;
+        }
 
         public String getDid() {
             return did;
@@ -197,14 +211,6 @@ public class NotabeneProperties {
 
     public void setKeyFragment(String keyFragment) {
         this.keyFragment = keyFragment;
-    }
-
-    public boolean isSkipValidation() {
-        return skipValidation;
-    }
-
-    public void setSkipValidation(boolean skipValidation) {
-        this.skipValidation = skipValidation;
     }
 
     public Transfer getTransfer() {

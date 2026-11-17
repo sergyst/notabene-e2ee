@@ -4,7 +4,7 @@ package id.notabene.e2ee.web.dto;
  * Whether an address is registered, and to whom.
  *
  * @param registered true when a VASP owns it; vasp is null otherwise
- * @param confidence CONFIRMED, UNCONFIRMED or NOT_FOUND
+ * @param source     how Notabene established ownership (e.g. AddressHash); null when not registered
  * @param caip10     what was actually queried, after normalisation
  */
 public record RegistrationStatus(
@@ -12,8 +12,7 @@ public record RegistrationStatus(
         String address,
         String network,
         String caip10,
-        String asset,
-        String confidence,
+        String source,
         VaspRef vasp) {
 
     /**

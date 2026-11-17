@@ -18,6 +18,7 @@ import id.notabene.e2ee.web.dto.RegistrationStatus;
 import id.notabene.e2ee.web.dto.RecipientKey;
 import id.notabene.e2ee.web.dto.SendRequest;
 import id.notabene.e2ee.web.dto.SendResponse;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
@@ -39,10 +40,11 @@ public class TravelRuleService {
     private final VaspKeyStore keyStore;
     private final LocalLedger ledger;
     private final AddressOwnershipService addressOwnership;
+    private final CustomerService customers;
 
     public TravelRuleService(NotabeneProperties properties, NotabeneClient client, IvmsCrypto ivmsCrypto,
             SamplePii samplePii, VaspKeyStore keyStore, LocalLedger ledger,
-            AddressOwnershipService addressOwnership) {
+            AddressOwnershipService addressOwnership, CustomerService customers) {
         this.properties = properties;
         this.client = client;
         this.ivmsCrypto = ivmsCrypto;
@@ -50,6 +52,7 @@ public class TravelRuleService {
         this.keyStore = keyStore;
         this.ledger = ledger;
         this.addressOwnership = addressOwnership;
+        this.customers = customers;
     }
 
     /** Who the PII is for: a configured VASP, or one discovered from an address. */
@@ -70,6 +73,12 @@ public class TravelRuleService {
             return sendLocal(request, sender, beneficiary, mode, pii);
         }
 
+        if (mode == PiiMode.FIELD) {
+            throw new IllegalArgumentException("Notabene v2.1 takes one JWE per party "
+                    + "(POST /transfers/{id}/parties/{role}/encrypted-pii), so field mode only works on the "
+                    + "local channel. Use mode \"branch\".");
+        }
+
         // 1 - the key to encrypt to.
         ResolvedKey key = resolveRecipientKey(request, sender, beneficiary);
         Jwk recipientJwk = key.jwk();
@@ -80,12 +89,10 @@ public class TravelRuleService {
         // 2 - the transfer.
         String transferId = request.transferId();
         if (transferId == null || transferId.isBlank()) {
-            Map<String, Object> body = TransferBodies.hostedToHosted(
+            Map<String, Object> body = TransferBodies.withdrawal(
                     properties.getTransfer(),
-                    sender.getDid(),
+                    orDefault(request.originatorId(), customers.ensure(sender)),
                     beneficiary.did(),
-                    orDefault(request.originatorId(), sender.getDid() + ":customer:john-doe"),
-                    orDefault(request.beneficiaryId(), beneficiary.did() + ":customer:jane-smith"),
                     beneficiary.discoveredFrom());
             Map<String, Object> created = client.createTransfer(sender, body);
             transferId = extractTransferId(created);
@@ -101,9 +108,14 @@ public class TravelRuleService {
         log.info("encrypted {} JWE(s) [{}] alg={} enc={} kid={}",
                 encrypted.parts().size(), mode.lower(), header.get("alg"), header.get("enc"), header.get("kid"));
 
-        // 4 - present the ciphertext.
-        Map<String, Object> presented = client.presentPii(sender, transferId, encrypted.payload(), request.policyId());
-        log.info("Notabene accepted the presentation for {}: {}", transferId, presented);
+        // 4 - one JWE per party. 204 = disclosed to the recipient, 202 = held for compliance review.
+        Map<String, Object> presented = new LinkedHashMap<>();
+        for (String role : List.of("originator", "beneficiary")) {
+            if (encrypted.payload() instanceof Map<?, ?> payload && payload.get(role) instanceof String jwe) {
+                presented.put(role, client.addEncryptedPii(sender, transferId, role, jwe));
+            }
+        }
+        log.info("Notabene accepted the encrypted PII for {}: {}", transferId, presented);
 
         List<String> parts = encrypted.parts().stream().map(p -> p.path().replaceFirst("^\\$\\.?", "")).toList();
         return new SendResponse(transferId, request.from(), beneficiary.label(), beneficiary.did(),
@@ -118,10 +130,9 @@ public class TravelRuleService {
      */
     private Beneficiary resolveBeneficiary(SendRequest request) {
         RegistrationStatus owner = addressOwnership.status(
-                request.from(), request.beneficiaryAddress(), request.network(), request.asset());
+                request.from(), request.beneficiaryAddress(), request.network());
         if (!owner.registered()) {
-            throw new IllegalArgumentException("No VASP owns " + owner.caip10() + " (" + owner.confidence()
-                    + "). The owner must register it first - POST /api/register/complete.");
+            throw new IllegalArgumentException("No VASP owns " + owner.caip10() + ". The owner must register it first - POST /api/register/complete.");
         }
 
         RegistrationStatus.VaspRef vasp = owner.vasp();
@@ -179,8 +190,16 @@ public class TravelRuleService {
                 return new ResolvedKey(jwk, kid, "explicit", warning);
             }
             case "notabene" -> {
-                Map<String, Object> keyResponse = client.getEntityPublicKeys(sender, beneficiary.did());
-                Map<String, Object> encryptionKey = asMap(keyResponse.get("encryptionKey"), keyResponse);
+                // v2.1 has no public-keys endpoint: assess returns the beneficiary VASP's key on request.
+                Map<String, Object> assessed = client.assessTransfer(sender, properties.getTransfer().getAsset(),
+                        properties.getTransfer().getAmount(), beneficiary.discoveredFrom());
+                Map<String, Object> encryptionKey = asMap(asMap(assessed.get("beneficiaryVasp"), Map.of())
+                        .get("encryptionKey"), Map.of());
+                if (encryptionKey.isEmpty()) {
+                    throw new IllegalStateException("Notabene returned no encryption key for "
+                            + beneficiary.did() + ". Its DID document needs a \"#" + properties.getKeyFragment()
+                            + "\" key; or send recipientKey explicitly.");
+                }
                 Jwk jwk = toJwk(encryptionKey);
                 String kid = encryptionKey.get("id") instanceof String id ? id : defaultKid;
 
@@ -250,7 +269,7 @@ public class TravelRuleService {
     // ---------------------------------------------------------------- helpers
 
     /**
-     * Normalise whatever /entities/:did/public-keys gives us into a JWK we can
+     * Normalise whatever the assess call gives us into a JWK we can
      * run ECDH against.
      */
     private Jwk toJwk(Map<String, Object> encryptionKey) {
@@ -280,21 +299,12 @@ public class TravelRuleService {
         return value instanceof Map<?, ?> map ? (Map<String, Object>) map : fallback;
     }
 
-    /** Notabene returns the id as "@id" inside "transfer"; other shapes appear in their docs. */
+    /** POST /api/v1/transfers answers {transferId, status}. */
     private static String extractTransferId(Map<String, Object> created) {
-        if (created.get("transfer") instanceof Map<?, ?> transfer) {
-            for (String key : List.of("id", "@id", "transferId")) {
-                if (transfer.get(key) != null) {
-                    return transfer.get(key).toString();
-                }
-            }
+        if (created.get("transferId") != null) {
+            return created.get("transferId").toString();
         }
-        for (String key : List.of("id", "@id", "transferId")) {
-            if (created.get(key) != null) {
-                return created.get(key).toString();
-            }
-        }
-        throw new IllegalStateException("Could not find a transfer id in the create response: " + created);
+        throw new IllegalStateException("Could not find transferId in the create response: " + created);
     }
 
     private static String orDefault(String value, String fallback) {

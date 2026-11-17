@@ -17,11 +17,15 @@ import org.springframework.web.client.RestClient;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Minimal Notabene Transact V2 REST client - just the calls this project needs.
+ * Minimal Notabene v2.1 REST client - just the calls this project needs.
+ * Every path is /api/v1/...; the credential identifies the node, so there is no
+ * entity DID in any URL any more.
  *
- * Transfers: https://devx.notabene.id/reference/createtransfer
- * PII:       https://devx.notabene.id/reference/presenttransferpii
- * Keys:      https://devx.notabene.id/reference/getentitypublickeys
+ * Customers: https://devx.notabene.id/v2.1/reference/post_api-v1-customers
+ * Wallets:   https://devx.notabene.id/v2.1/reference/post_api-v1-wallets
+ * Proofs:    https://devx.notabene.id/v2.1/reference/post_api-v1-customers-customer-wallets-address-proofs
+ * Discovery: https://devx.notabene.id/v2.1/reference/post_api-v1-wallet-ownerships-discover
+ * Transfers: https://devx.notabene.id/v2.1/reference/post_api-v1-transfers
  */
 @Service
 @Slf4j
@@ -37,68 +41,101 @@ public class NotabeneClient {
         this.properties = properties;
         this.tokenService = tokenService;
         this.json = json;
-        // Handle error statuses ourselves so we can fall through to the next
-        // documented path spelling on a 404/405.
+        // Handle error statuses ourselves so callers can act on 404/409.
         this.restClient = builder
                 .defaultStatusHandler(HttpStatusCode::isError, (request, response) -> {
                 })
                 .build();
     }
 
-    /**
-     * The counterparty's PII encryption key. Notabene's priority is "#pii"
-     * first, so a published EcdsaSecp256r1VerificationKey2019 wins.
-     */
-    public Map<String, Object> getEntityPublicKeys(NotabeneProperties.Vasp caller, String entityDid) {
-        String did = encode(entityDid);
-        return getMap(caller, List.of(
-                "/entities/" + did + "/public-keys",
-                "/entity/" + did + "/public-keys"));
-    }
+    // ---------------------------------------------------------------- customers & wallets
 
-    public Map<String, Object> createTransfer(NotabeneProperties.Vasp caller, Map<String, Object> body) {
-        String did = encode(caller.getDid());
-        return requestFirstThatWorks(caller, "POST", List.of(
-                "/entities/" + did + "/tx",
-                "/entity/" + did + "/tx"), body);
-    }
-
-    public Map<String, Object> getTransfer(NotabeneProperties.Vasp caller, String transferId, boolean decrypt) {
-        String did = encode(caller.getDid());
-        String query = "?decrypt=" + decrypt;
-        return getMap(caller, List.of(
-                "/entities/" + did + "/tx/" + transferId + query,
-                "/entity/" + did + "/tx/" + transferId + query));
-    }
-
-    /** GET /entities/:did/tx - used by the poller to spot new incoming transfers. */
-    public List<Map<String, Object>> listTransfers(NotabeneProperties.Vasp caller, String direction, int limit) {
-        String did = encode(caller.getDid());
-        StringBuilder query = new StringBuilder("?limit=").append(limit);
-        if (direction != null && !direction.isBlank()) {
-            query.append("&direction=").append(encode(direction));
-        }
-
-        Map<String, Object> response;
+    /** POST /api/v1/customers. 409 "customer already exists" is not an error here. */
+    public void ensureCustomer(NotabeneProperties.Vasp caller, Map<String, Object> body) {
         try {
-            response = getMap(caller, List.of(
-                    "/entities/" + did + "/tx" + query,
-                    "/entity/" + did + "/tx" + query));
+            request(caller, "POST", "/api/v1/customers", body);
         } catch (NotabeneApiException e) {
-            // Some nodes reject the direction filter; retry without it rather
-            // than killing the poll loop.
-            if (direction == null || direction.isBlank() || e.getStatus() != 400) {
+            if (e.getStatus() != 409) {
                 throw e;
             }
-            log.debug("direction={} rejected ({}), retrying without the filter", direction, e.getStatus());
-            response = getMap(caller, List.of(
-                    "/entities/" + did + "/tx?limit=" + limit,
-                    "/entity/" + did + "/tx?limit=" + limit));
+            log.debug("customer {} already exists", body.get("id"));
         }
+    }
 
-        Object data = response.get("data");
-        if (data instanceof List<?> list) {
-            List<Map<String, Object>> out = new ArrayList<>();
+    /**
+     * POST /api/v1/wallets. Registering the same wallet again is a 201; the same
+     * address under different details is a 409.
+     */
+    public Map<String, Object> registerWallet(NotabeneProperties.Vasp caller, Map<String, Object> body) {
+        return request(caller, "POST", "/api/v1/wallets", body);
+    }
+
+    /** POST /api/v1/customers/{customer}/wallets/{address}/proofs - 201 with the stored proof. */
+    public Map<String, Object> submitWalletProof(NotabeneProperties.Vasp caller, String customer, String caip10,
+            Map<String, Object> body) {
+        return request(caller, "POST",
+                "/api/v1/customers/" + encode(customer) + "/wallets/" + encode(caip10) + "/proofs", body);
+    }
+
+    /**
+     * POST /api/v1/wallet-ownerships/discover. Returns owner, custodian and
+     * source, or null when nothing owns the address (a 404, which is the answer
+     * to the question rather than an error).
+     */
+    public Map<String, Object> discoverWalletOwnership(NotabeneProperties.Vasp caller, String caip10) {
+        try {
+            return request(caller, "POST", "/api/v1/wallet-ownerships/discover", Map.of("address", caip10));
+        } catch (NotabeneApiException e) {
+            if (e.getStatus() == 404) {
+                return null;
+            }
+            throw e;
+        }
+    }
+
+    /** GET /api/v1/network/entities/{did}: name and jurisdiction, no key material. */
+    public Map<String, Object> getNetworkEntity(NotabeneProperties.Vasp caller, String did) {
+        return request(caller, "GET", "/api/v1/network/entities/" + encode(did), null);
+    }
+
+    // ---------------------------------------------------------------- transfers
+
+    /**
+     * The counterparty's PII encryption key. v2.1 has no public-keys endpoint;
+     * the assess call returns beneficiaryVasp.encryptionKey when asked.
+     */
+    public Map<String, Object> assessTransfer(NotabeneProperties.Vasp caller, String asset, String amount,
+            String destinationAddress) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("asset", asset);
+        body.put("amount", amount);
+        body.put("destinationAddress", destinationAddress);
+        return request(caller, "POST", "/api/v1/transfers/assess?include_pubkeys=true", body);
+    }
+
+    /** POST /api/v1/transfers - answers {transferId, status}. */
+    public Map<String, Object> createTransfer(NotabeneProperties.Vasp caller, Map<String, Object> body) {
+        return request(caller, "POST", "/api/v1/transfers", body);
+    }
+
+    /** include_ivms=true adds each party's ivms_encrypted JWE (needs read:customer:pii). */
+    public Map<String, Object> getTransfer(NotabeneProperties.Vasp caller, String transferId, boolean includeIvms) {
+        return request(caller, "GET", "/api/v1/transfers/" + encode(transferId) + "?include_ivms=" + includeIvms,
+                null);
+    }
+
+    /** GET /api/v1/transfers - used by the poller to spot new incoming transfers. */
+    public List<Map<String, Object>> listTransfers(NotabeneProperties.Vasp caller, String direction, int limit) {
+        StringBuilder query = new StringBuilder("?limit=").append(Math.max(1, Math.min(limit, 200)));
+        if (direction != null && !direction.isBlank()) {
+            // The API's enum is Incoming | Outgoing.
+            String d = direction.trim().toLowerCase();
+            query.append("&direction=").append(Character.toUpperCase(d.charAt(0))).append(d.substring(1));
+        }
+        Map<String, Object> response = request(caller, "GET", "/api/v1/transfers" + query, null);
+
+        List<Map<String, Object>> out = new ArrayList<>();
+        if (response.get("items") instanceof List<?> list) {
             for (Object item : list) {
                 if (item instanceof Map<?, ?> map) {
                     @SuppressWarnings("unchecked")
@@ -106,110 +143,24 @@ public class NotabeneClient {
                     out.add(typed);
                 }
             }
-            return out;
         }
-        return List.of();
+        return out;
     }
 
     /**
-     * Which VASP owns a blockchain address, per relationships, the Hashed
-     * Address Service and blockchain analytics.
-     * https://devx.notabene.id/reference/discoveraddressownership
+     * POST /api/v1/transfers/{id}/parties/{role}/encrypted-pii. Role is
+     * "originator" or "beneficiary"; the body is one compact JWE. 204 means it
+     * was disclosed to the recipient, 202 that a compliance hold has it.
      */
-    public Map<String, Object> discoverAddressOwnership(NotabeneProperties.Vasp caller, String asset, String address) {
-        String did = encode(caller.getDid());
+    public Map<String, Object> addEncryptedPii(NotabeneProperties.Vasp caller, String transferId, String role,
+            String jwe) {
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("asset", asset);
-        body.put("address", address);
-        try {
-            return requestFirstThatWorks(caller, "POST", List.of(
-                    "/entities/" + did + "/address-ownership/discover",
-                    "/entity/" + did + "/address-ownership/discover"), body);
-        } catch (NotabeneApiException e) {
-            // Notabene answers 404 with a complete body when nothing owns the
-            // address. "NOT_FOUND" is the answer to the question, not an error.
-            if (e.getStatus() == 404 && e.getBody() != null && e.getBody().contains("\"addressOwnership\"")) {
-                return parse(e.getBody());
-            }
-            throw e;
-        }
-    }
-
-    /**
-     * Register an address to an entity. PATCH upserts, so it both creates the
-     * relationship and confirms it.
-     * https://devx.notabene.id/v2.0/reference/confirmrelationship
-     *
-     * @param body carries the "proof" object that makes the registration verifiable
-     */
-    public Map<String, Object> confirmRelationship(NotabeneProperties.Vasp caller, String from, String to,
-            Map<String, Object> body) {
-        String did = encode(caller.getDid());
-        String query = "?from=" + encode(from) + "&to=" + encode(to);
-        return requestFirstThatWorks(caller, "PATCH", List.of(
-                "/entities/" + did + "/relationships" + query,
-                "/entity/" + did + "/relationships" + query), body);
-    }
-
-    /** Everything this entity knows about who owns which address. */
-    public Map<String, Object> listRelationships(NotabeneProperties.Vasp caller) {
-        String did = encode(caller.getDid());
-        return getMap(caller, List.of(
-                "/entities/" + did + "/relationships",
-                "/entity/" + did + "/relationships"));
-    }
-
-    /**
-     * Post the already-encrypted IVMS101 to the counterparty. With a policyId it
-     * fulfils that specific policy; without one it fulfils any open Travel Rule
-     * policy on the transfer.
-     */
-    public Map<String, Object> presentPii(NotabeneProperties.Vasp caller, String transferId, Object ivms101,
-            String policyId) {
-        String did = encode(caller.getDid());
-        String query = "?skipValidation=" + properties.isSkipValidation();
-
-        List<String> paths = (policyId == null || policyId.isBlank())
-                ? List.of(
-                        "/entities/" + did + "/tx/" + transferId + "/presentation" + query,
-                        "/entity/" + did + "/tx/" + transferId + "/presentation" + query,
-                        "/entities/" + did + "/transfers/" + transferId + "/presentation" + query)
-                : List.of(
-                        "/entities/" + did + "/transfers/" + transferId + "/policies/" + policyId + "/presentation" + query,
-                        "/entities/" + did + "/tx/" + transferId + "/policy/" + policyId + "/presentation" + query,
-                        "/entity/" + did + "/tx/" + transferId + "/policy/" + policyId + "/presentation" + query);
-
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("ivms101", ivms101);
-        return requestFirstThatWorks(caller, "POST", paths, body);
+        body.put("ivms_encrypted", jwe);
+        return request(caller, "POST",
+                "/api/v1/transfers/" + encode(transferId) + "/parties/" + encode(role) + "/encrypted-pii", body);
     }
 
     // ---------------------------------------------------------------- plumbing
-
-    private Map<String, Object> getMap(NotabeneProperties.Vasp caller, List<String> paths) {
-        return requestFirstThatWorks(caller, "GET", paths, null);
-    }
-
-    /** Notabene's prose docs and OpenAPI spec disagree on path spellings. */
-    private Map<String, Object> requestFirstThatWorks(NotabeneProperties.Vasp caller, String method,
-            List<String> paths, Object body) {
-        NotabeneApiException lastError = null;
-        for (String path : paths) {
-            try {
-                Map<String, Object> result = request(caller, method, path, body);
-                log.info("used {} {}", method, path.split("\\?")[0]);
-                return result;
-            } catch (NotabeneApiException e) {
-                if (e.getStatus() != 404 && e.getStatus() != 405) {
-                    throw e;
-                }
-                log.debug("{} {} -> {}, trying next spelling", method, path.split("\\?")[0], e.getStatus());
-                lastError = e;
-            }
-        }
-        throw lastError != null ? lastError
-                : new NotabeneApiException("No path candidates were tried", 500, "");
-    }
 
     @SuppressWarnings("unchecked")
     private Map<String, Object> request(NotabeneProperties.Vasp caller, String method, String path, Object body) {
@@ -238,18 +189,14 @@ public class NotabeneClient {
         }
 
         if (text.isBlank()) {
-            return Map.of();
+            // 204 and friends: the status is the whole answer.
+            return Map.of("httpStatus", response.getStatusCode().value());
         }
         if (!text.trim().startsWith("{")) {
             Map<String, Object> wrapped = new LinkedHashMap<>();
             wrapped.put("raw", text);
             return wrapped;
         }
-        return json.readValue(text, Map.class);
-    }
-
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> parse(String text) {
         return json.readValue(text, Map.class);
     }
 

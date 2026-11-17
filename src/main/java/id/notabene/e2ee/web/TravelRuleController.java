@@ -115,12 +115,16 @@ public class TravelRuleController {
 
     /**
      * POST /api/register/complete - step 2 of registering a blockchain address
-     * to one of your VASPs, so counterparties discover that VASP as its owner.
+     * under one of your VASPs' Notabene customer: registers the wallet
+     * (POST /api/v1/wallets), then submits the ownership proof.
      *
      * {"vasp":"vaspB","address":"0x56F5…","network":"ethereum",
-     *  "proof":{"attestation":"…","signature":"0x…"}}
+     *  "proof":{"type":"eip-191","attestation":"…","signature":"0x…"}}
+     * {"vasp":"vaspB","address":"0x56F5…","network":"ethereum",
+     *  "proof":{"type":"self-declaration","attestation":"I hold the keys…"}}
      *
-     * The proof is mandatory: sign the message from GET /api/register/initiate.
+     * The proof is mandatory. For a signature type, sign the message from
+     * GET /api/register/initiate. "managed" (default false) marks a hosted wallet.
      * network takes a friendly name ("ethereum", "sepolia", "bitcoin") or a
      * CAIP-2 id ("eip155:1"). The address may be bare or already CAIP-10.
      */
@@ -156,9 +160,8 @@ public class TravelRuleController {
     public RegistrationStatus registrationStatus(
             @RequestParam String vasp,
             @RequestParam String address,
-            @RequestParam String network,
-            @RequestParam(required = false) String asset) {
-        return addressOwnershipService.status(vasp, address, network, asset);
+            @RequestParam String network) {
+        return addressOwnershipService.status(vasp, address, network);
     }
 
     /** POST /api/startPool - start polling Notabene for messages to this VASP. */

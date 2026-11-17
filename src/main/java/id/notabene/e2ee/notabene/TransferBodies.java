@@ -1,45 +1,36 @@
 package id.notabene.e2ee.notabene;
 
 import id.notabene.e2ee.config.NotabeneProperties;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
-/** Builds the transfer body for a hosted-to-hosted VASP transfer. */
+/** Builds the POST /api/v1/transfers body for a withdrawal to another VASP's address. */
 public final class TransferBodies {
 
     private TransferBodies() {
     }
 
-    public static Map<String, Object> hostedToHosted(NotabeneProperties.Transfer transfer, String originatorVaspDid,
-            String beneficiaryVaspDid, String originatorId, String beneficiaryId, String settlementAddress) {
+    /**
+     * @param originatorId       IRI of the sending customer (required for a withdrawal)
+     * @param beneficiaryDid     the institution that owns the settlement address
+     * @param settlementAddress  where the funds go; bare or CAIP-10, blank for the configured sample
+     */
+    public static Map<String, Object> withdrawal(NotabeneProperties.Transfer transfer, String originatorId,
+            String beneficiaryDid, String settlementAddress) {
 
-        String settlement = Addresses.toDidPkh((settlementAddress == null || settlementAddress.isBlank())
+        String settlement = Addresses.toCaip10((settlementAddress == null || settlementAddress.isBlank())
                 ? transfer.getBeneficiaryAddress()
                 : settlementAddress);
 
-        List<Map<String, Object>> agents = new ArrayList<>();
-        agents.add(agent(Addresses.toDidPkh(transfer.getOriginatorAddress()), originatorVaspDid, "SourceAddress"));
-        agents.add(agent(originatorVaspDid, originatorId, "VASP"));
-        agents.add(agent(beneficiaryVaspDid, beneficiaryId, "VASP"));
-        agents.add(agent(settlement, beneficiaryVaspDid, "SettlementAddress"));
-
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("originator", Map.of("@id", originatorId));
-        body.put("beneficiary", Map.of("@id", beneficiaryId));
+        body.put("ref", UUID.randomUUID().toString());
         body.put("asset", transfer.getAsset());
         body.put("amount", transfer.getAmount());
-        body.put("agents", agents);
-        body.put("ref", "e2ee-demo-" + System.currentTimeMillis());
+        body.put("originator_id", originatorId);
+        body.put("source_address", Addresses.toCaip10(transfer.getOriginatorAddress()));
+        body.put("settlement_address", settlement);
+        body.put("beneficiary_entity_did", beneficiaryDid);
         return body;
-    }
-
-    private static Map<String, Object> agent(String id, String forParty, String role) {
-        Map<String, Object> agent = new LinkedHashMap<>();
-        agent.put("@id", id);
-        agent.put("for", forParty);
-        agent.put("role", role);
-        return agent;
     }
 }

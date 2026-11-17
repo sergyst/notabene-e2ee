@@ -3,7 +3,7 @@
 A Spring Boot port of the JavaScript project, where **you** own the encryption:
 
 - **vaspA** encrypts IVMS101 PII with its own code and posts only ciphertext to Notabene.
-- **vaspB** pulls the transfer with `decrypt=false` and decrypts locally with a private key that never leaves it.
+- **vaspB** pulls the transfer with `include_ivms=true` and decrypts locally with a private key that never leaves it.
 - Notabene never sees plaintext.
 
 Java 17, Spring Boot 4.0.4, Jackson 3. The crypto is plain JCA — no BouncyCastle, no Nimbus.
@@ -72,15 +72,13 @@ curl -s -X POST localhost:8080/api/send \
 | `from` | yes | configured VASP name that originates, e.g. `vaspA` |
 | `beneficiaryAddress` | yes | settlement address, bare or CAIP-10. Notabene is asked who owns it; that VASP is the beneficiary. There is no `to` field. |
 | `network` | yes | chain of that address: `ethereum`, `polygon`, … or a CAIP-2 id. An address naming a different chain is rejected. |
-| `asset` | no | CAIP-19 asset for the ownership lookup; derived from `network` |
-| `mode` | no | `branch` (default) or `field` |
+| `mode` | no | `branch` (default). `field` works on the local channel only; Notabene v2.1 takes one JWE per party. |
 | `transferId` | no | present PII on an existing transfer instead of creating one |
-| `policyId` | no | fulfil one specific policy instead of every open one |
-| `originatorId` / `beneficiaryId` | no | party identifiers on the transfer |
+| `originatorId` | no | IRI of the sending customer; defaults to the VASP's own customer (`urn:uuid:…`) |
 | `pii` | no | your own IVMS101 object; defaults to `sample-pii.json` |
 
 It looks up the address's owner in Notabene (the owner must have registered it — see
-`register/complete`), fetches that VASP's published key, creates the transfer, encrypts locally, and POSTs the ciphertext.
+`register/complete`), fetches that VASP's published key, creates the transfer (`POST /api/v1/transfers`), encrypts locally, and POSTs one JWE per party to `/transfers/{id}/parties/{role}/encrypted-pii`.
 
 ### transfers
 
@@ -91,7 +89,7 @@ curl -s "localhost:8080/api/transfers/<id>?vasp=vaspB&channel=local" | jq
 ```
 
 `?channel=` selects where to read from — see the channel note below. The detail call fetches with
-`decrypt=false` and decrypts locally, returning the ciphertext, the plaintext, the JWE header and a
+`include_ivms=true` and decrypts locally, returning the ciphertext, the plaintext, the JWE header and a
 flat field list.
 
 ### register (initiate / complete) / registration-status
@@ -111,33 +109,34 @@ CAIP-2 id such as `eip155:42161`. The address may be bare or already CAIP-10; if
 that contradicts `network`, the call is rejected rather than silently reinterpreted. That matters:
 the same hex on two chains is two different registrations.
 
+Registration follows Notabene v2.1: `POST /api/v1/wallets` registers the address under the VASP's
+customer, then `POST /api/v1/customers/{customer}/wallets/{address}/proofs` submits the proof. The
+customer is `notabene.vasps.<name>.customer-id`, or a stable `urn:uuid:` derived from the DID and
+created with `POST /api/v1/customers` on first use.
+
 Missing or blank `address`, an empty account after a chain prefix, and bean-validation failures on
 request bodies all return `400 bad_request` naming the offending field.
 
 `registration-status` answers `{"registered": false, …}` when nobody owns it, and otherwise names
 the owning VASP, its jurisdiction, and — when the owner is one of yours — its configured name.
+Lookup is `POST /api/v1/wallet-ownerships/discover`; `source` says how Notabene knows (e.g.
+`AddressHash`, meaning the owner registered it).
 
-> **Testnets do not work.** Notabene rejects `eip155:11155111` with *"Asset … is not supported or
-> chain is not resolvable"*, and rejects a testnet address under a mainnet asset with
-> `CHAIN_MISMATCH`. Their model needs a fiat price per asset to enforce jurisdictional thresholds,
-> which testnet assets have not got. For Travel Rule testing the chain is notional anyway — nothing
-> settles on-chain — so use mainnet-shaped addresses and never settle them.
+> **Testnets are unverified.** The v2.0 API rejected testnet chains (it priced every asset). The v2.1
+> docs do not say either way; if a testnet address is refused, use a mainnet-shaped address and never settle it.
 
 #### Proving ownership
 
-A registration without a proof would only be a self-declaration ("the claimant says so"), and any
-VASP could claim any address. So `register/complete` requires a signature over the attestation, which
-Notabene verifies. The address is always registered to the calling VASP's own DID.
+A proof says the customer controls the address. `register/complete` requires one and submits it to
+Notabene, which verifies signature types on submission (`Submitted` → `Accepted` or `Failed`).
+`self-declaration` and `screenshot` proofs stay `Submitted` until Notabene compliance decides.
 
-> **Documented vs. verified.** Notabene's [outgoing-transfers guide](https://devx.notabene.id/v2.0/docs/create-outgoing-transfers)
-> says a signature proof is "the only method to update to status `PROVEN`" — that is the status of the
-> *relationship*. What it does not say is how that surfaces in address lookup: `registration-status`
-> reports `confidence`, documented as `CONFIRMED`, `UNCONFIRMED` or `NOT_FOUND`. That mapping has not
-> been checked against a live call.
->
-> The attestation wording is also only an *example* in that guide — no rule about wording or date
-> format is documented — so that Notabene accepts our copy of it is likewise unconfirmed. Register an
-> address with a proof in the sandbox and read the real `confidence` before relying on either.
+> **Documented vs. verified.** The v2.1 docs name the proof types and fields but do not say which
+> fields each type needs, and do not mandate any attestation wording — the message from
+> `register/initiate` copies an example from the v2.0 guide, so that Notabene accepts it is unconfirmed.
+> The docs also say a proof is for a *self-hosted* wallet, which Notabene does not publish to
+> counterparties, so `managed` defaults to `false` and other VASPs may not discover the address through
+> this route. Register one in the sandbox and read the real `status` before relying on any of it.
 
 ```bash
 # 1. get the exact message to sign (it carries a timestamp - sign it verbatim, don't rebuild it)
@@ -152,14 +151,15 @@ curl -s -X POST localhost:8080/api/register/complete -H 'Content-Type: applicati
 
 | `proof` field | Required | Meaning |
 |---|---|---|
-| `proof` | **yes** | the whole object; a request without it is rejected with 400 |
-| `attestation` / `signature` | yes (both) | the signed message and the signature over it |
-| `type` | no | scheme, default `eip-191`; Notabene also accepts `eip-712`, `eip-1271`, `bip-137`, `bip-322`, `ed25519`, `siwe`, … |
-| `status` | no | default `verified` |
-| `xpub` / `chainSpecificData` | no | for schemes that need them |
+| `type` | **yes** | `eip-191`, `bip-322`, `bip-137-xpub`, `self-declaration`, `screenshot` |
+| `signature` | signature types | hex or base64 signature over the attestation |
+| `attestation` | non-signature types (and the signed message for signature types) | text, or a URL for a screenshot |
+| `walletProvider` | no | e.g. `MetaMask` |
+| `xpub` | `bip-137-xpub` only | extended public key |
+| `chainData` | no | extra chain-specific fields |
 
-This server does **not** verify the signature — Notabene does. A proof with only one of
-`attestation`/`signature` is rejected with a 400.
+Also at the top level: `managed` (default `false`). This server does **not** verify the signature —
+Notabene does. A 409 means another of your customers already holds a proof of that address.
 
 `tools/sign-attestation.mjs` signs EIP-191 messages for testing (the JVM can't: keccak-256 and
 secp256k1 would need BouncyCastle, and signing belongs with whoever custodies the key anyway):
@@ -200,7 +200,7 @@ curl -s localhost:8080/api/pollStatus | jq
 curl -s -X POST localhost:8080/api/stopPool -H 'Content-Type: application/json' -d '{"vasp":"vaspB"}'
 ```
 
-The poller lists incoming transfers, fetches each new one with `decrypt=false`, decrypts it with that
+The poller lists incoming transfers, fetches each new one with `include_ivms=true`, decrypts it with that
 VASP's private key, and logs every field. A failing poll is recorded in `lastError` and the loop keeps
 going, so a missing credential does not kill it.
 
@@ -301,15 +301,15 @@ curl -s localhost:8080/api/pollStatus | jq '.[0].recent'
 **`branch`** (default) — one JWE for `ivms101.originator`, one for `ivms101.beneficiary`:
 
 ```json
-{ "ivms101": { "originator": "eyJhbGciOiJFQ0RILUVTIiwi...", "beneficiary": "eyJhbGciOiJFQ0RILUVTIiwi..." } }
+POST /api/v1/transfers/{id}/parties/originator/encrypted-pii   { "ivms_encrypted": "eyJhbGciOiJFQ0RILUVTIiwi..." }
+POST /api/v1/transfers/{id}/parties/beneficiary/encrypted-pii  { "ivms_encrypted": "eyJhbGciOiJFQ0RILUVTIiwi..." }
 ```
 
 Two JWEs instead of fifteen, and the structure leaks nothing.
 
-**`field`** — every leaf value becomes its own JWE, the IVMS101 tree stays visible. This is the shape
-in Notabene's own reference examples, and the only one that lets the platform validate a payload it
-cannot read. If you ever set `notabene.skip-validation: false` and a branch-mode payload is rejected,
-that is why.
+**`field`** — every leaf value becomes its own JWE, the IVMS101 tree stays visible. Notabene v2.1 takes a
+single JWE per party, so this mode is for the offline demo and the local channel only; `send` on the
+notabene channel refuses it.
 
 Decryption auto-detects, so a receiving VASP never needs to be told which mode the sender used.
 
@@ -364,15 +364,14 @@ All of `application.yml` is overridable by environment variable.
 
 | Property | Default | Notes |
 |---|---|---|
-| `notabene.api-base` | `https://api.eu1.notabene.id` | US node: `https://api.us1.notabene.id` |
-| `notabene.auth-url` | `https://auth.notabene.id/oauth/token` | US: `https://us.auth.notabene.id/oauth/token` |
+| `notabene.api-base` | `https://sandbox.notabene.id` | production: `https://eu-a.notabene.id` or `https://us-a.notabene.id` |
+| `notabene.auth-url` | `https://auth.notabene.id/oauth/token` | US production: `https://us.auth.notabene.id/oauth/token` |
 | `notabene.audience` | = `api-base` | |
 | `notabene.pii-mode` | `branch` | `branch` or `field` |
 | `notabene.key-dir` | `keys` | `keys/<vasp>.json`, gitignored |
 | `notabene.key-fragment` | `pii` | DIDDoc key id suffix |
-| `notabene.skip-validation` | `true` | `skipValidation` on the presentation call |
 | `notabene.polling.*` | 15s, limit 25, `incoming` | interval, page size, direction, history size |
-| `notabene.vasps.<name>.*` | vaspA, vaspB | `did`, `client-id`, `client-secret` — add as many as you like |
+| `notabene.vasps.<name>.*` | vaspA, vaspB | `did`, `client-id`, `client-secret`, `customer-id` (optional) — add as many as you like |
 
 ## Logging
 
@@ -403,10 +402,13 @@ logging.level.notabene.http: INFO   # switch it off
 
 ## Notes and gotchas
 
-- **Path spellings.** Notabene's prose docs use `/entity/:did/...` while the OpenAPI spec uses
-  `/entities/{entityDID}/...`, and the presentation endpoint appears as both `/tx/:id/presentation`
-  and `/transfers/:id/policies/:policyId/presentation`. `NotabeneClient` tries the documented variants
-  in order and logs which one answered.
+- **v2.1 only.** This project targets Notabene's v2.1 API (`/api/v1/...`, no entity DID in URLs). The old
+  v2.0 calls (`/entities/{did}/...`, relationships, `address-ownership/discover`) are gone.
+- **Open v2.1 questions.** There is no public-keys endpoint, so the recipient key comes from
+  `POST /api/v1/transfers/assess?include_pubkeys=true`. The docs disagree on the IVMS envelope
+  (`originatorPerson` in the encryption guide, `naturalPerson` in the reference); we encrypt the
+  `originator` / `beneficiary` branch of `sample-pii.json` as is. `include_ivms` may need the
+  `read:customer:pii` permission.
 - **Spring Boot 4 does not auto-configure `RestClient.Builder`**, so `HttpClientConfig` provides one
   with timeouts.
 - **Jackson 3.** Spring Boot 4 ships `tools.jackson.*`, not `com.fasterxml.jackson.*`, and its

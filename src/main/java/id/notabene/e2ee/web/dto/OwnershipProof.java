@@ -4,31 +4,26 @@ import jakarta.validation.constraints.NotBlank;
 import java.util.Map;
 
 /**
- * A signature proving control of the address being registered.
+ * Evidence that the customer controls the address, sent as the body of
+ * POST /api/v1/customers/{customer}/wallets/{address}/proofs.
  *
- * Without one a registration would only be a self-declaration ("the claimant
- * says so"), so POST /api/register/complete requires it and Notabene verifies it.
- * Notabene documents PROVEN as the relationship status for a signature proof;
- * how lookup reports it is unverified against a live call.
+ * Signature types (eip-191, bip-322, bip-137-xpub) carry {@code signature};
+ * non-signature types (self-declaration, screenshot) carry {@code attestation}.
+ * Notabene verifies signatures on submission - this server does not.
  *
- * This server does NOT verify the signature - Notabene does. Sign the exact
- * string returned by GET /api/register/initiate, because the attestation
- * carries a timestamp and the bytes must match what you signed.
- *
- * @param type        signature scheme; defaults to eip-191. Notabene also accepts
- *                    eip-712, eip-1271, bip-137, bip-322, tip-191, ed25519,
- *                    xrp-ed25519, xlm-ed25519, cip-8, siwe, siwx
- * @param attestation the exact message that was signed
- * @param signature   the signature over it
- * @param status      pending, rejected, flagged or verified; defaults to verified
- * @param xpub        optional extended public key, for schemes that use one
- * @param chainSpecificData optional extra fields some schemes require
+ * @param type           the proof mechanism, e.g. eip-191, bip-322, bip-137-xpub, self-declaration, screenshot
+ * @param attestation    the attestation text (or URL) for non-signature types; for a
+ *                       signature type, the message that was signed
+ * @param signature      hex- or base64-encoded signature, for signature types
+ * @param walletProvider the wallet that produced the proof, e.g. MetaMask
+ * @param xpub           extended public key; bip-137-xpub only
+ * @param chainData      extra chain-specific fields some proof types need
  */
 public record OwnershipProof(
-        String type,
-        @NotBlank String attestation,
-        @NotBlank String signature,
-        String status,
+        @NotBlank String type,
+        String attestation,
+        String signature,
+        String walletProvider,
         String xpub,
-        Map<String, Object> chainSpecificData) {
+        Map<String, Object> chainData) {
 }
