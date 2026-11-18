@@ -1,7 +1,7 @@
 Place the mTLS files here (git-ignored):
 
 - cacerts_dev.jks  JKS truststore (password: notabene.tls.truststore-password); added to the default JDK trust store
-- cert.pem    our client certificate (leaf first, then any intermediates)
-- key.pem     private key for cert.pem, unencrypted PEM ("BEGIN PRIVATE KEY" or "BEGIN RSA PRIVATE KEY")
+- client.p12       PKCS#12 with our client certificate + private key (password: notabene.tls.keystore-password)
 
-If a file is missing, mTLS is skipped and the JDK defaults are used.
+Rename client.p12 or change notabene.tls.keystore if your file is called something else.
+If a file is missing, it is skipped and the JDK defaults are used.

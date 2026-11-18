@@ -16,8 +16,8 @@ notabene:
   tls:
     truststore: certs/cacerts_dev.jks
     truststore-password: ${TLS_TRUSTSTORE_PASSWORD:changeit}
-    cert-pem: certs/cert.pem
-    key-pem: certs/key.pem
+    keystore: certs/client.p12
+    keystore-password: ${TLS_KEYSTORE_PASSWORD:}
   # Notabene v2.1. Sandbox shown; production is https://eu-a.notabene.id (EU)
   # or https://us-a.notabene.id with https://us.auth.notabene.id/oauth/token (US).
   api-base: https://sandbox.notabene.id
