@@ -18,7 +18,7 @@ export JAVA_HOME=$(/usr/libexec/java_home -v 17)
 Then, with no credentials and no network:
 
 ```bash
-curl -s localhost:8080/api/demo | jq
+curl -s localhost:8091/api/demo | jq
 ```
 
 ```
@@ -52,7 +52,7 @@ you can read what it found, and `vasps` is what makes the setup guide below acti
 ### demo
 
 ```bash
-curl -s "localhost:8080/api/demo?mode=branch" | jq '{mode, piiMatches, mismatches, otherMode}'
+curl -s "localhost:8091/api/demo?mode=branch" | jq '{mode, piiMatches, mismatches, otherMode}'
 ```
 
 Returns the plaintext PII, each JWE produced, the exact body that would go to Notabene, the error a
@@ -62,7 +62,7 @@ comparison. The same thing is written to the application log.
 ### send
 
 ```bash
-curl -s -X POST localhost:8080/api/send \
+curl -s -X POST localhost:8091/api/send \
   -H 'Content-Type: application/json' \
   -d '{"from":"vaspA","beneficiaryAddress":"0x56F5…","network":"ethereum"}' | jq
 ```
@@ -83,9 +83,9 @@ It looks up the address's owner in Notabene (the owner must have registered it �
 ### transfers
 
 ```bash
-curl -s "localhost:8080/api/transfers?channel=local" | jq                  # every VASP
-curl -s "localhost:8080/api/transfers?vasp=vaspB&channel=notabene" | jq    # one of them
-curl -s "localhost:8080/api/transfers/<id>?vasp=vaspB&channel=local" | jq
+curl -s "localhost:8091/api/transfers?channel=local" | jq                  # every VASP
+curl -s "localhost:8091/api/transfers?vasp=vaspB&channel=notabene" | jq    # one of them
+curl -s "localhost:8091/api/transfers/<id>?vasp=vaspB&channel=local" | jq
 ```
 
 `?channel=` selects where to read from — see the channel note below. The detail call fetches with
@@ -95,11 +95,11 @@ flat field list.
 ### register (initiate / complete) / registration-status
 
 ```bash
-curl -s "localhost:8080/api/registration-status?vasp=vaspB&address=0x56F5…&network=ethereum" | jq
+curl -s "localhost:8091/api/registration-status?vasp=vaspB&address=0x56F5…&network=ethereum" | jq
 
-curl -s "localhost:8080/api/register/initiate?vasp=vaspB&address=0x56F5…&network=ethereum" | jq   # step 1
+curl -s "localhost:8091/api/register/initiate?vasp=vaspB&address=0x56F5…&network=ethereum" | jq   # step 1
 # sign the returned message, then:
-curl -s -X POST localhost:8080/api/register/complete ...                                          # step 2
+curl -s -X POST localhost:8091/api/register/complete ...                                          # step 2
 ```
 
 Registration is always two steps and always carries a signed proof — see below.
@@ -140,11 +140,11 @@ Notabene, which verifies signature types on submission (`Submitted` → `Accepte
 
 ```bash
 # 1. get the exact message to sign (it carries a timestamp - sign it verbatim, don't rebuild it)
-curl -s "localhost:8080/api/register/initiate?vasp=vaspB&address=0x56F5…&network=ethereum" | jq
+curl -s "localhost:8091/api/register/initiate?vasp=vaspB&address=0x56F5…&network=ethereum" | jq
 
 # 2. sign it with the address's private key (see tools/ below)
 # 3. register with the proof
-curl -s -X POST localhost:8080/api/register/complete -H 'Content-Type: application/json' -d '{
+curl -s -X POST localhost:8091/api/register/complete -H 'Content-Type: application/json' -d '{
   "vasp":"vaspB","address":"0x56F5…","network":"ethereum",
   "proof":{"type":"eip-191","attestation":"I certify that\n\n…","signature":"0x…"}}' | jq
 ```
@@ -183,7 +183,7 @@ then a live send fails with `404 NO_ENCRYPTION_KEYS`. The local channel lets you
 encrypt → store → decrypt path in the meantime; listing live transfers works either way.
 
 ```bash
-curl -s -X POST localhost:8080/api/send -H 'Content-Type: application/json' \
+curl -s -X POST localhost:8091/api/send -H 'Content-Type: application/json' \
   -d '{"from":"vaspA","beneficiaryAddress":"0x56F5…","network":"ethereum","channel":"local"}' | jq
 
 # the owner is still discovered from Notabene, and must be a VASP configured on this server
@@ -192,12 +192,12 @@ curl -s -X POST localhost:8080/api/send -H 'Content-Type: application/json' \
 ### startPool / stopPool
 
 ```bash
-curl -s -X POST localhost:8080/api/startPool \
+curl -s -X POST localhost:8091/api/startPool \
   -H 'Content-Type: application/json' \
   -d '{"vasp":"vaspB","intervalSeconds":15}' | jq
 
-curl -s localhost:8080/api/pollStatus | jq
-curl -s -X POST localhost:8080/api/stopPool -H 'Content-Type: application/json' -d '{"vasp":"vaspB"}'
+curl -s localhost:8091/api/pollStatus | jq
+curl -s -X POST localhost:8091/api/stopPool -H 'Content-Type: application/json' -d '{"vasp":"vaspB"}'
 ```
 
 The poller lists incoming transfers, fetches each new one with `include_ivms=true`, decrypts it with that
@@ -243,7 +243,7 @@ export VASP_B_CLIENT_SECRET=...
 **5. Generate your PII keys and publish them.**
 
 ```bash
-curl -s localhost:8080/api/vasps | jq
+curl -s localhost:8091/api/vasps | jq
 ```
 
 Keys are generated on first use into `keys/<vasp>.json` and reused afterwards. The response gives you
@@ -280,7 +280,7 @@ encrypting to its own key and the exchange is not end-to-end.
 **8. Check it took.**
 
 ```bash
-curl -s -X POST localhost:8080/api/send -H 'Content-Type: application/json' \
+curl -s -X POST localhost:8091/api/send -H 'Content-Type: application/json' \
   -d '{"from":"vaspA","beneficiaryAddress":"0x56F5…","network":"ethereum"}' | jq '{transferId, recipientKid, warning}'
 ```
 
@@ -290,8 +290,8 @@ live yet and the PII would be encrypted to a Notabene-held key.
 **9. Receive it.**
 
 ```bash
-curl -s -X POST localhost:8080/api/startPool -H 'Content-Type: application/json' -d '{"vasp":"vaspB"}'
-curl -s localhost:8080/api/pollStatus | jq '.[0].recent'
+curl -s -X POST localhost:8091/api/startPool -H 'Content-Type: application/json' -d '{"vasp":"vaspB"}'
+curl -s localhost:8091/api/pollStatus | jq '.[0].recent'
 ```
 
 ## How much goes into each JWE

@@ -1,5 +1,5 @@
 server:
-  port: 8080
+  port: 8091
 
 spring:
   application:
@@ -12,6 +12,11 @@ logging:
     notabene.http: DEBUG
 
 notabene:
+  # mTLS material, see certs/README.md. Missing files = plain TLS.
+  tls:
+    ca-pem: certs/DEV_CA.pem
+    cert-pem: certs/cert.pem
+    key-pem: certs/key.pem
   # Notabene v2.1. Sandbox shown; production is https://eu-a.notabene.id (EU)
   # or https://us-a.notabene.id with https://us.auth.notabene.id/oauth/token (US).
   api-base: https://sandbox.notabene.id

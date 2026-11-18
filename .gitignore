@@ -6,3 +6,5 @@ keys/*.json
 .DS_Store
 /config/
 tools/node_modules/
+/certs/*
+!/certs/README.md
