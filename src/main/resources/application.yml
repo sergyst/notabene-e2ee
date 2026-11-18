@@ -14,7 +14,8 @@ logging:
 notabene:
   # mTLS material, see certs/README.md. Missing files = plain TLS.
   tls:
-    ca-pem: certs/DEV_CA.pem
+    truststore: certs/cacerts_dev.jks
+    truststore-password: ${TLS_TRUSTSTORE_PASSWORD:changeit}
     cert-pem: certs/cert.pem
     key-pem: certs/key.pem
   # Notabene v2.1. Sandbox shown; production is https://eu-a.notabene.id (EU)

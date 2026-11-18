@@ -1,7 +1,6 @@
 package id.notabene.e2ee.config;
 
 import java.io.InputStream;
-import java.net.http.HttpClient;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.KeyFactory;
@@ -13,10 +12,10 @@ import java.security.cert.X509Certificate;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.time.Duration;
 import java.util.Base64;
+import java.util.ArrayList;
 import java.util.Collection;
-import javax.net.ssl.KeyManager;
-import javax.net.ssl.KeyManagerFactory;
-import javax.net.ssl.SSLContext;
+import java.util.Collections;
+import java.util.List;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.TrustManagerFactory;
 import javax.net.ssl.X509TrustManager;
@@ -24,9 +23,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.client.BufferingClientHttpRequestFactory;
-import org.springframework.http.client.JdkClientHttpRequestFactory;
-import org.springframework.web.client.RestClient;
+import io.netty.handler.ssl.SslContext;
+import io.netty.handler.ssl.SslContextBuilder;
+import org.springframework.http.client.reactive.ReactorClientHttpConnector;
+import org.springframework.web.reactive.function.client.WebClient;
+import reactor.netty.http.client.HttpClient;
 
 /**
  * Spring Boot 4 does not auto-configure a RestClient.Builder, so supply one.
@@ -39,7 +40,7 @@ import org.springframework.web.client.RestClient;
  * and still leave it readable for the caller.
  *
  * mTLS: if certs/cert.pem + certs/key.pem exist they are presented as the client
- * certificate; certs/DEV_CA.pem (if present) is trusted in addition to the JDK's
+ * certificate; certs/cacerts_dev.jks (if present) is trusted in addition to the JDK's
  * default CAs.
  */
 @Configuration
@@ -47,53 +48,50 @@ import org.springframework.web.client.RestClient;
 public class HttpClientConfig {
 
     @Bean
-    public RestClient.Builder restClientBuilder(
-            @Value("${notabene.tls.ca-pem:}") String caPem,
+    public WebClient.Builder webClientBuilder(
+            @Value("${notabene.tls.truststore:}") String truststore,
+            @Value("${notabene.tls.truststore-password:changeit}") String truststorePassword,
             @Value("${notabene.tls.cert-pem:}") String certPem,
             @Value("${notabene.tls.key-pem:}") String keyPem) throws Exception {
 
-        HttpClient.Builder http = HttpClient.newBuilder();
-        SSLContext ssl = sslContext(caPem, certPem, keyPem);
+        HttpClient http = HttpClient.create().responseTimeout(Duration.ofSeconds(30));
+        SslContext ssl = sslContext(truststore, truststorePassword, certPem, keyPem);
         if (ssl != null) {
-            http.sslContext(ssl);
+            http = http.secure(spec -> spec.sslContext(ssl));
         }
-
-        JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(http.build());
-        factory.setReadTimeout(Duration.ofSeconds(30));
-        return RestClient.builder()
-                .requestFactory(new BufferingClientHttpRequestFactory(factory))
-                .requestInterceptor(new NotabeneHttpLogger());
+        return WebClient.builder()
+                .clientConnector(new ReactorClientHttpConnector(http))
+                .filter(new NotabeneHttpLogger());
     }
 
-    private static SSLContext sslContext(String caPem, String certPem, String keyPem) throws Exception {
-        boolean hasCa = exists(caPem);
+    private static SslContext sslContext(String truststore, String truststorePassword, String certPem,
+            String keyPem) throws Exception {
+        boolean hasTrust = exists(truststore);
         boolean hasClient = exists(certPem) && exists(keyPem);
-        if (!hasCa && !hasClient) {
-            log.info("No certs found ({} / {} / {}); using the JDK's default TLS", caPem, certPem, keyPem);
+        if (!hasTrust && !hasClient) {
+            log.info("No certs found ({} / {} / {}); using the JDK's default TLS", truststore, certPem, keyPem);
             return null;
         }
 
-        KeyManager[] keyManagers = null;
+        SslContextBuilder builder = SslContextBuilder.forClient();
+
         if (hasClient) {
-            Certificate[] chain = readCertificates(certPem).toArray(new Certificate[0]);
-            PrivateKey key = readPrivateKey(keyPem, chain[0].getPublicKey().getAlgorithm());
-            KeyStore ks = KeyStore.getInstance("PKCS12");
-            ks.load(null, null);
-            ks.setKeyEntry("client", key, new char[0], chain);
-            KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
-            kmf.init(ks, new char[0]);
-            keyManagers = kmf.getKeyManagers();
+            List<X509Certificate> chain = new ArrayList<>();
+            for (Certificate c : readCertificates(certPem)) {
+                chain.add((X509Certificate) c);
+            }
+            PrivateKey key = readPrivateKey(keyPem, chain.get(0).getPublicKey().getAlgorithm());
+            builder.keyManager(key, chain.toArray(new X509Certificate[0]));
             log.info("mTLS client certificate loaded from {}", certPem);
         }
 
-        TrustManager[] trustManagers = null;
-        if (hasCa) {
-            // Default JDK CAs (auth.notabene.id is public) plus DEV_CA.
+        if (hasTrust) {
+            // Default JDK CAs (auth.notabene.id is public) plus everything in the JKS.
             KeyStore ts = KeyStore.getInstance(KeyStore.getDefaultType());
             ts.load(null, null);
+            int i = 0;
             TrustManagerFactory defaults = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
             defaults.init((KeyStore) null);
-            int i = 0;
             for (TrustManager tm : defaults.getTrustManagers()) {
                 if (tm instanceof X509TrustManager x509) {
                     for (X509Certificate c : x509.getAcceptedIssuers()) {
@@ -101,18 +99,22 @@ public class HttpClientConfig {
                     }
                 }
             }
-            for (Certificate c : readCertificates(caPem)) {
-                ts.setCertificateEntry("extra-" + i++, c);
+            KeyStore jks = KeyStore.getInstance("JKS");
+            try (InputStream in = Files.newInputStream(Path.of(truststore))) {
+                jks.load(in, truststorePassword.toCharArray());
+            }
+            for (String alias : Collections.list(jks.aliases())) {
+                Certificate c = jks.getCertificate(alias);
+                if (c != null) {
+                    ts.setCertificateEntry("jks-" + alias, c);
+                }
             }
             TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
             tmf.init(ts);
-            trustManagers = tmf.getTrustManagers();
-            log.info("Extra trusted CA loaded from {}", caPem);
+            builder.trustManager(tmf);
+            log.info("Extra trusted CAs loaded from {}", truststore);
         }
-
-        SSLContext ssl = SSLContext.getInstance("TLS");
-        ssl.init(keyManagers, trustManagers, null);
-        return ssl;
+        return builder.build();
     }
 
     private static boolean exists(String path) {

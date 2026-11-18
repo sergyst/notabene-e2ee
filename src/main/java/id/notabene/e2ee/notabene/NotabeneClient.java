@@ -9,11 +9,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestClient;
+import org.springframework.web.reactive.function.client.WebClient;
+import id.notabene.e2ee.config.NotabeneHttpLogger;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -34,18 +34,14 @@ public class NotabeneClient {
     private final NotabeneProperties properties;
     private final TokenService tokenService;
     private final ObjectMapper json;
-    private final RestClient restClient;
+    private final WebClient webClient;
 
     public NotabeneClient(NotabeneProperties properties, TokenService tokenService, ObjectMapper json,
-            RestClient.Builder builder) {
+            WebClient.Builder builder) {
         this.properties = properties;
         this.tokenService = tokenService;
         this.json = json;
-        // Handle error statuses ourselves so callers can act on 404/409.
-        this.restClient = builder
-                .defaultStatusHandler(HttpStatusCode::isError, (request, response) -> {
-                })
-                .build();
+        this.webClient = builder.build();
     }
 
     // ---------------------------------------------------------------- customers & wallets
@@ -167,18 +163,23 @@ public class NotabeneClient {
         String token = tokenService.accessToken(caller);
         String url = properties.getApiBase() + path;
 
-        RestClient.RequestBodySpec spec = restClient
+        WebClient.RequestBodySpec spec = webClient
                 .method(org.springframework.http.HttpMethod.valueOf(method))
                 // URI.create, not the String overload: the path already carries
                 // percent-encoded DIDs and must not be treated as a template.
                 .uri(URI.create(url))
                 .header("Authorization", "Bearer " + token);
 
-        RestClient.RequestHeadersSpec<?> ready = (body == null)
-                ? spec
-                : spec.contentType(MediaType.APPLICATION_JSON).body(body);
+        WebClient.RequestHeadersSpec<?> ready = spec;
+        if (body != null) {
+            String bodyJson = json.writeValueAsString(body);
+            ready = spec.attribute(NotabeneHttpLogger.BODY_ATTRIBUTE, bodyJson)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(bodyJson);
+        }
 
-        ResponseEntity<String> response = ready.retrieve().toEntity(String.class);
+        // exchangeToMono, not retrieve(): handle error statuses ourselves so callers can act on 404/409.
+        ResponseEntity<String> response = ready.exchangeToMono(r -> r.toEntity(String.class)).block();
 
         String text = response.getBody() == null ? "" : response.getBody();
         if (response.getStatusCode().isError()) {

@@ -8,7 +8,9 @@ import java.util.concurrent.ConcurrentHashMap;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestClient;
+import org.springframework.web.reactive.function.client.WebClient;
+import id.notabene.e2ee.config.NotabeneHttpLogger;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * OAuth2 client-credentials tokens, cached per clientId until shortly before
@@ -22,12 +24,14 @@ public class TokenService {
     }
 
     private final NotabeneProperties properties;
-    private final RestClient restClient;
+    private final WebClient webClient;
+    private final ObjectMapper json;
     private final Map<String, CachedToken> cache = new ConcurrentHashMap<>();
 
-    public TokenService(NotabeneProperties properties, RestClient.Builder builder) {
+    public TokenService(NotabeneProperties properties, WebClient.Builder builder, ObjectMapper json) {
         this.properties = properties;
-        this.restClient = builder.build();
+        this.json = json;
+        this.webClient = builder.build();
     }
 
     public String accessToken(NotabeneProperties.Vasp vasp) {
@@ -48,12 +52,15 @@ public class TokenService {
         request.put("grant_type", "client_credentials");
         request.put("audience", properties.getAudience());
 
-        Map<?, ?> response = restClient.post()
-                .uri(properties.getAuthUrl())
+        String requestJson = json.writeValueAsString(request);
+        Map<?, ?> response = webClient.post()
+                .uri(java.net.URI.create(properties.getAuthUrl()))
+                .attribute(NotabeneHttpLogger.BODY_ATTRIBUTE, requestJson)
                 .contentType(MediaType.APPLICATION_JSON)
-                .body(request)
+                .bodyValue(requestJson)
                 .retrieve()
-                .body(Map.class);
+                .bodyToMono(Map.class)
+                .block();
 
         if (response == null || response.get("access_token") == null) {
             throw new NotabeneApiException("Auth returned no access_token", 500, String.valueOf(response));
